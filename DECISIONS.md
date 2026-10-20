@@ -216,6 +216,37 @@ Format: **Beslut** – motivering – (datum, fas).
   skugga, centrerad, med halvsekundstoning: titeln de första ~3 s, eftertexten de sista.
   Texten ändrar inte klipplistans tajming. (2026-10-20, fas 4)
 
+## 6d. Apple Intelligence som regissör (fas 5)
+
+- **Foundation Models (iOS 26-API:t) på enheten, ingen Private Cloud Compute.** PCC kräver en
+  särskild entitlement och nätverk; modellen på enheten räcker för att välja och ordna klipp.
+  (2026-10-20, fas 5)
+- **Modellen ser bara en rad text per klipp:** kort id (`c12`), tid, foto/film och längd, plats
+  (koordinater med två decimaler), kvalitetspoäng, antal ansikten och Vision-etiketter (t.ex.
+  "child", "beach"). Aldrig bilderna själva. Raderna byggs i ClipCore (`DirectorBriefing`) och
+  testas där. (2026-10-20, fas 5)
+- **Strukturerat svar med `@Generable`:** klipp-id i ordning, upp till sex kapitel, en av de fem
+  stilarna (`.anyOf`) och en titel. Okända id:n och dubbletter kastas; om inget användbart
+  återstår används inte planen. Modellen bestämmer aldrig tider – planeraren följer modellens urval
+  och ordning och sköter tajming och längd som vanligt; räcker urvalet inte fylls det på med det
+  bästa övriga materialet. (2026-10-20, fas 5)
+- **Långt material delas i omgångar** som ryms i modellens kontextfönster (`contextSize` minus
+  plats för svaret). Varje rad räknas med `tokenCount(for:)` där det finns (iOS 26.4+), annars
+  uppskattas fyra tecken per token. Omgångarnas svar slås ihop i kronologisk ordning; stilen
+  avgörs med majoritet. (2026-10-20, fas 5)
+- **Fritextfältet visas bara när modellen är tillgänglig och stöder språket**
+  (`SystemLanguageModel.default.isAvailable` och `supportsLocale()`), kontrollerat vid start och när
+  appen kommer tillbaka i förgrunden. Annars döljs det tyst och appen fungerar som vanligt. Går
+  något fel under genereringen görs filmen utan beskrivningen och en kort notis visas.
+  (2026-10-20, fas 5)
+- **Modellens stil- och titelförslag används bara när användaren inte själv valt** stil respektive
+  skrivit en titel. Planen återanvänds för nya versioner så länge beskrivningen och materialet är
+  desamma. (2026-10-20, fas 5)
+- **Testning:** CI:s simulatorer har ingen Apple Intelligence, så där testas reservläget (fältet
+  dolt, filmen görs ändå) och att en given plan följs (barnklipp i majoritet). Testet som frågar
+  den riktiga modellen ("only pictures with the children") körs bara där modellen finns – på en
+  iPhone med Apple Intelligence eller en Mac som har det. (2026-10-20, fas 5)
+
 ## 7. Spara och dela
 
 - **Sparar till Bilder med "endast lägga till"-behörighet** (`NSPhotoLibraryAddUsageDescription`);

@@ -36,6 +36,13 @@ struct PreviewView: View {
                     noticeView(entry.element)
                         .padding(.horizontal)
                 }
+                if model.draft.directorFailed {
+                    Label("Apple Intelligence could not follow your description, so the film was made without it.", systemImage: "info.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                }
 
                 ClipStripView(
                     clips: session.edl.clips,

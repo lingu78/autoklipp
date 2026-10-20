@@ -26,6 +26,12 @@ final class AppModel {
     /// How long the last clip-strip edit took until the new preview was ready.
     private(set) var lastEditDuration: Duration?
     var message: String?
+    /// Apple Intelligence can direct films on this device (checked at start and on return).
+    private(set) var directorAvailable = FilmDirector.isAvailable
+
+    func refreshDirectorAvailability() {
+        directorAvailable = FilmDirector.isAvailable
+    }
 
     init(inMemory: Bool = false) {
         draft = ProjectDraft()
@@ -224,6 +230,15 @@ final class ProjectDraft {
     /// Title and end credit (F14); empty means none.
     var title = ""
     var endCredit = ""
+    /// The user's description for the AI director (F16).
+    var instruction = ""
+    /// The director's plan for `directorInstruction`, reused for new versions.
+    var directorPlan: DirectorPlan?
+    var directorInstruction = ""
+    /// The user picked the style themselves, so the director's suggestion is not applied.
+    var styleChosenByUser = false
+    /// The last description could not be followed.
+    var directorFailed = false
     var edl: EditDecisionList?
 
     init(id: UUID = UUID()) {
@@ -251,6 +266,10 @@ final class ProjectDraft {
         exclusions = snapshot.exclusions
         title = snapshot.title
         endCredit = snapshot.endCredit
+        instruction = snapshot.instruction ?? ""
+        directorPlan = snapshot.directorPlan
+        directorInstruction = snapshot.directorInstruction ?? ""
+        styleChosenByUser = snapshot.styleChosenByUser ?? false
         edl = snapshot.edl
     }
 
@@ -272,7 +291,11 @@ final class ProjectDraft {
             exclusions: exclusions,
             title: title,
             endCredit: endCredit,
-            edl: edl
+            edl: edl,
+            instruction: instruction,
+            directorPlan: directorPlan,
+            directorInstruction: directorInstruction,
+            styleChosenByUser: styleChosenByUser
         )
     }
 
@@ -301,6 +324,23 @@ final class ProjectDraft {
         let format = Date.FormatStyle(date: .abbreviated, time: .omitted)
         if Calendar.current.isDate(first, inSameDayAs: last) { return first.formatted(format) }
         return "\(first.formatted(format)) – \(last.formatted(format))"
+    }
+
+    /// The description in effect when Apple Intelligence is available, else none.
+    var instructionInEffect: String {
+        FilmDirector.isAvailable ? instruction.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+    }
+
+    /// Keeps a director plan only while the description and material are the same.
+    func forgetDirectorPlanIfStale() {
+        if directorInstruction != instructionInEffect { directorPlan = nil }
+        if let plan = directorPlan, !Set(plan.mediaIDs).isSubset(of: Set(media.map(\.id))) { directorPlan = nil }
+    }
+
+    /// The user chooses a style.
+    func choose(style newStyle: StyleID) {
+        styleChosenByUser = true
+        select(style: newStyle)
     }
 
     /// Changes the style; until the user picks a song, the music follows the style.

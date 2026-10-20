@@ -21,6 +21,8 @@ struct AutoklippApp: App {
         .onChange(of: scenePhase) { _, phase in
             // The compositor switches to CPU rendering while the GPU is off limits.
             RenderEnvironment.setInBackground(phase == .background)
+            // Apple Intelligence may have been turned on or finished downloading meanwhile.
+            if phase == .active { model.refreshDirectorAvailability() }
         }
     }
 }

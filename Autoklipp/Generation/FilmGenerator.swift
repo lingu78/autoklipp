@@ -5,15 +5,22 @@ import Observation
 /// Steps shown while a film is generated.
 enum GenerationStep: Int, CaseIterable, Sendable {
     case analysing
+    case directing
     case selecting
     case rendering
 
     var title: LocalizedStringResource {
         switch self {
         case .analysing: "Analysing clips…"
+        case .directing: "Following your description…"
         case .selecting: "Choosing the best moments…"
         case .rendering: "Rendering…"
         }
+    }
+
+    /// The steps shown for a run, with or without a description to follow.
+    static func steps(directed: Bool) -> [GenerationStep] {
+        directed ? allCases : allCases.filter { $0 != .directing }
     }
 }
 
@@ -31,6 +38,12 @@ struct GenerationInput: Sendable {
     var exclusions: [Exclusion] = []
     var title = ""
     var endCredit = ""
+    /// The user's description of the film (F16); empty when none.
+    var instruction = ""
+    /// A plan from an earlier run for the same description and material.
+    var directorPlan: DirectorPlan?
+    /// Let the director's suggested style replace the current one.
+    var styleFollowsDirector = false
 }
 
 extension GenerationInput {
@@ -48,7 +61,10 @@ extension GenerationInput {
             lockedClips: draft.lockedClips,
             exclusions: draft.exclusions,
             title: draft.title,
-            endCredit: draft.endCredit
+            endCredit: draft.endCredit,
+            instruction: draft.instructionInEffect,
+            directorPlan: draft.directorPlan,
+            styleFollowsDirector: !draft.styleChosenByUser
         )
     }
 }
@@ -58,6 +74,12 @@ struct GenerationOutput: Sendable {
     var built: BuiltComposition
     /// Analyses including the ones computed in this run, for the project to keep.
     var analyses: [String: MediaAnalysis]
+    /// The director's plan, when a description was followed.
+    var directorPlan: DirectorPlan?
+    /// Style used, which the director may have chosen.
+    var style: StyleID
+    /// The description could not be followed; the film was made without it.
+    var directorFailed = false
 }
 
 /// Runs analysis, planning and composition building, reporting each step.
@@ -85,6 +107,7 @@ enum FilmGenerator {
             seed: input.seed,
             lockedClips: input.lockedClips,
             exclusions: input.exclusions,
+            director: input.directorPlan,
             title: input.title,
             endCredit: input.endCredit,
             originalAudio: input.originalAudio
@@ -102,6 +125,26 @@ enum FilmGenerator {
             await onProgress(.analysing, fraction)
         }
 
+        var directorFailed = false
+        if !input.instruction.isEmpty, input.directorPlan == nil {
+            await onProgress(.directing, 0)
+            do {
+                input.directorPlan = try await FilmDirector.plan(
+                    instruction: input.instruction, media: input.media.map(\.item), analyses: input.analyses
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // The model is a bonus: without its plan the film is made the usual way.
+                directorFailed = true
+            }
+            if input.directorPlan == nil { directorFailed = true }
+        }
+        if let plan = input.directorPlan {
+            if input.styleFollowsDirector, let style = plan.suggestedStyle { input.style = style }
+            if input.title.isEmpty, let title = plan.title { input.title = title }
+        }
+
         await onProgress(.selecting, 0)
         try Task.checkCancellation()
         let edl = plan(input)
@@ -110,7 +153,10 @@ enum FilmGenerator {
         await onProgress(.rendering, 0)
         try Task.checkCancellation()
         let built = try await build(edl, media: input.media, song: input.song, settings: settings)
-        return GenerationOutput(edl: edl, built: built, analyses: input.analyses)
+        return GenerationOutput(
+            edl: edl, built: built, analyses: input.analyses, directorPlan: input.directorPlan,
+            style: input.style, directorFailed: directorFailed
+        )
     }
 
     /// Analyses media not analysed before, a few at a time. A file that cannot be analysed

@@ -14,6 +14,14 @@ STRINGS = {
     "Analysing clips…": "Analyserar klipp…",
     "Choosing the best moments…": "Väljer bästa ögonblicken…",
     "Rendering…": "Renderar…",
+    "Following your description…": "Följer din beskrivning…",
+    "For example: a calm film about the summer, focusing on the children":
+        "Till exempel: en lugn film om sommaren med fokus på barnen",
+    "Describe your film (optional)": "Beskriv din film (valfritt)",
+    "Apple Intelligence picks and orders the clips on your device. Only short descriptions of the clips are used, never the pictures.":
+        "Apple Intelligence väljer och ordnar klippen på din enhet. Bara korta beskrivningar av klippen används, aldrig bilderna.",
+    "Apple Intelligence could not follow your description, so the film was made without it.":
+        "Apple Intelligence kunde inte följa din beskrivning, så filmen gjordes utan den.",
     "Calm": "Lugn",
     "Energetic": "Energisk",
     "Nostalgic": "Nostalgisk",

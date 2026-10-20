@@ -241,6 +241,26 @@
         }
       }
     },
+    "Apple Intelligence could not follow your description, so the film was made without it.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence kunde inte följa din beskrivning, så filmen gjordes utan den."
+          }
+        }
+      }
+    },
+    "Apple Intelligence picks and orders the clips on your device. Only short descriptions of the clips are used, never the pictures.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Intelligence väljer och ordnar klippen på din enhet. Bara korta beskrivningar av klippen används, aldrig bilderna."
+          }
+        }
+      }
+    },
     "Auto": {
       "localizations": {
         "sv": {
@@ -411,6 +431,16 @@
         }
       }
     },
+    "Describe your film (optional)": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beskriv din film (valfritt)"
+          }
+        }
+      }
+    },
     "Done": {
       "localizations": {
         "sv": {
@@ -517,6 +547,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Letar efter takten…"
+          }
+        }
+      }
+    },
+    "Following your description…": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Följer din beskrivning…"
+          }
+        }
+      }
+    },
+    "For example: a calm film about the summer, focusing on the children": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Till exempel: en lugn film om sommaren med fokus på barnen"
           }
         }
       }

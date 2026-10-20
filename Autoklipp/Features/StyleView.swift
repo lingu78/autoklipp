@@ -42,6 +42,9 @@ struct StyleView: View {
 
     var body: some View {
         List {
+            if model.directorAvailable {
+                DescriptionSection(draft: model.draft)
+            }
             StylePickerSection(draft: model.draft)
             MusicPickerSection(draft: model.draft, analysingSong: $analysingSong)
             SoundSection(draft: model.draft)
@@ -73,7 +76,7 @@ struct StylePickerSection: View {
         Section("Style") {
             ForEach(StyleID.allCases, id: \.self) { style in
                 Button {
-                    draft.select(style: style)
+                    draft.choose(style: style)
                 } label: {
                     HStack(spacing: 14) {
                         Image(systemName: style.symbol)
@@ -97,6 +100,25 @@ struct StylePickerSection: View {
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(draft.style == style ? .isSelected : [])
             }
+        }
+    }
+}
+
+/// The free-text description for the AI director (F16), shown only with Apple Intelligence.
+struct DescriptionSection: View {
+    @Bindable var draft: ProjectDraft
+
+    var body: some View {
+        Section {
+            TextField(
+                "For example: a calm film about the summer, focusing on the children",
+                text: $draft.instruction, axis: .vertical
+            )
+            .lineLimit(2...4)
+        } header: {
+            Text("Describe your film (optional)")
+        } footer: {
+            Text("Apple Intelligence picks and orders the clips on your device. Only short descriptions of the clips are used, never the pictures.")
         }
     }
 }

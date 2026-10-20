@@ -59,4 +59,8 @@ struct ProjectSnapshot: Codable, Sendable {
     var title: String
     var endCredit: String
     var edl: EditDecisionList?
+    var instruction: String?
+    var directorPlan: DirectorPlan?
+    var directorInstruction: String?
+    var styleChosenByUser: Bool?
 }

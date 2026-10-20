@@ -25,7 +25,7 @@ struct GenerateView: View {
                         .controlSize(.large)
                 }
                 VStack(alignment: .leading, spacing: 14) {
-                    ForEach(GenerationStep.allCases, id: \.self) { item in
+                    ForEach(steps, id: \.self) { item in
                         HStack(spacing: 12) {
                             Image(systemName: icon(for: item))
                                 .foregroundStyle(item.rawValue <= step.rawValue ? Color.accentColor : .secondary)
@@ -51,6 +51,11 @@ struct GenerateView: View {
         .task { await generate() }
     }
 
+    private var steps: [GenerationStep] {
+        let draft = model.draft
+        return GenerationStep.steps(directed: !draft.instructionInEffect.isEmpty && draft.directorPlan == nil)
+    }
+
     private func icon(for item: GenerationStep) -> String {
         if item.rawValue < step.rawValue { return "checkmark.circle.fill" }
         if item == step { return "circle.dotted" }
@@ -59,6 +64,7 @@ struct GenerateView: View {
 
     private func generate() async {
         let draft = model.draft
+        draft.forgetDirectorPlanIfStale()
         let input = GenerationInput(draft: draft)
         let settings = RenderSettings.preview(draft.format)
         do {
@@ -70,6 +76,11 @@ struct GenerateView: View {
             }
             try Task.checkCancellation()
             draft.analyses.merge(output.analyses) { _, new in new }
+            draft.directorPlan = output.directorPlan
+            draft.directorInstruction = input.instruction
+            draft.directorFailed = output.directorFailed
+            if output.style != draft.style { draft.select(style: output.style) }
+            if draft.title.isEmpty, let title = output.edl.title?.text { draft.title = title }
             draft.edl = output.edl
             model.preview?.player.pause()
             model.preview = PreviewSession(edl: output.edl, built: output.built)
