@@ -68,6 +68,11 @@ enum CompositionBuilder {
         let upper = CMTimeMinimum(time(end), available.end)
         let range = CMTimeRange(start: lower, end: upper)
         guard range.duration > .zero else { return range }
+        // A track cannot take media after its end; fill the gap with an empty range first.
+        let trackEnd = target.segments.last?.timeMapping.target.end ?? .zero
+        if time(at) > trackEnd {
+            target.insertEmptyTimeRange(CMTimeRange(start: trackEnd, end: time(at)))
+        }
         do {
             try target.insertTimeRange(range, of: track, at: time(at))
         } catch {
