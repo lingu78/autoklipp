@@ -38,7 +38,8 @@ jobs:
         run: python3 scripts/check_strings.py
       - name: Test the clip logic (macOS)
         run: swift test --package-path Packages/ClipCore
-      - name: Boot simulator and grant Photos add access
+      - name: Start booting the simulator
+        # Booting a fresh simulator takes minutes; it runs while the app compiles.
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, os, sys
@@ -51,8 +52,17 @@ jobs:
           sys.exit("simulator not found")')
           echo "UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
-          xcrun simctl bootstatus "$UDID" -b
-          xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+      - name: Build for testing
+        run: |
+          set +e
+          xcodebuild build-for-testing \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination "id=$UDID" > build.log 2>&1
+          status=$?
+          grep -E '(error:|BUILD (SUCCEEDED|FAILED)|TEST BUILD)' build.log | tail -n 100
+          if [ $status -ne 0 ]; then tail -n 80 build.log; fi
+          exit $status
       - name: Fetch a public-domain portrait for the face test
         # Official portraits in the public domain on Wikimedia Commons. If none can be fetched,
         # the face part of the analysis tests is skipped.
@@ -63,19 +73,24 @@ jobs:
               file "$RUNNER_TEMP/portrait.jpg" && break
             fi
           done || true
-      - name: Build and test
+      - name: Wait for the simulator and grant Photos add access
+        run: |
+          xcrun simctl bootstatus "$UDID" -b > /dev/null
+          xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+      - name: Test
         env:
           TEST_RUNNER_AUTOKLIPP_CI: "1"
           TEST_RUNNER_AUTOKLIPP_FACE_IMAGE: ${{ runner.temp }}/portrait.jpg
         run: |
           set +e
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project Autoklipp.xcodeproj \
             -scheme Autoklipp \
             -destination "id=$UDID" \
             -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
           status=$?
-          grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|TEST (SUCCEEDED|FAILED)|BUILD (SUCCEEDED|FAILED))' xcodebuild.log | tail -n 400
+          grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400
+          grep -E '^(.*\] )?[a-zA-Z ]+: .* (ms|s)$|BPM detected|took|after [0-9]|sharpness|shake|average clip' xcodebuild.log | grep -v '◇' | tail -n 60
           if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
           exit $status
       - name: Build for device (unsigned)
@@ -96,4 +111,5 @@ jobs:
           path: |
             TestResults.xcresult
             xcodebuild.log
+            build.log
           retention-days: 7
