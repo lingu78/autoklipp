@@ -45,6 +45,9 @@ open Autoklipp.xcodeproj    # välj schemat Autoklipp och en iPhone-simulator, �
 
 För att köra på en egen iPhone: välj ditt team under _Signing & Capabilities_.
 
+Utan Mac: arbetsflödet **TestFlight** bygger, signerar och laddar upp appen till App Store
+Connect, så att den kan installeras med TestFlight. Engångsstegen står i [RELEASE.md](RELEASE.md).
+
 ## Tester
 
 ```bash

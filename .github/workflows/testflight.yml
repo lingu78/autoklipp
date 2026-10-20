@@ -1,0 +1,86 @@
+name: TestFlight
+
+# Builds a signed release and uploads it to App Store Connect, so the app can be installed on an
+# iPhone with TestFlight without owning a Mac. Started by hand; needs the secrets in RELEASE.md.
+on:
+  workflow_dispatch:
+
+jobs:
+  upload:
+    name: Archive and upload
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      XCODE: /Applications/Xcode_26.6.app
+      BUNDLE_ID: ${{ vars.BUNDLE_ID || 'se.autoklipp.app' }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - name: Check the secrets
+        env:
+          PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          missing=0
+          for name in TEAM_ID KEY_ID ISSUER_ID PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::A secret is missing ($name); see RELEASE.md"
+              missing=1
+            fi
+          done
+          exit $missing
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: sudo xcode-select -s "$XCODE"
+      - name: Write the App Store Connect key
+        env:
+          PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8"
+          echo "KEY_PATH=$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" >> "$GITHUB_ENV"
+      - name: Archive
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Autoklipp.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            | grep -E '(error:|warning: .*[Ss]ign|ARCHIVE (SUCCEEDED|FAILED))' || true
+          test -d "$RUNNER_TEMP/Autoklipp.xcarchive"
+      - name: Upload to App Store Connect
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Autoklipp.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
+          echo "Uploaded build ${{ github.run_number }}. It shows up in TestFlight once Apple has processed it."
+      - name: Remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
