@@ -50,6 +50,8 @@ enum CompositionBuilder {
     }
 
     private struct VideoSource {
+        /// Kept alive on purpose: a track only holds its asset weakly and stops working without it.
+        let asset: AVURLAsset
         let track: AVAssetTrack
         /// Where the track has media, seconds; may differ from the file's duration.
         let start: Double
@@ -131,7 +133,7 @@ enum CompositionBuilder {
                     }
                     let (range, transform) = try await track.load(.timeRange, .preferredTransform)
                     source = VideoSource(
-                        track: track, start: range.start.seconds, end: range.end.seconds,
+                        asset: asset, track: track, start: range.start.seconds, end: range.end.seconds,
                         orientation: CGImagePropertyOrientation(videoTransform: transform)
                     )
                     sources[clip.mediaID] = source
