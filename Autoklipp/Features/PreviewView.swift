@@ -19,8 +19,8 @@ struct PreviewView: View {
                     .onAppear { session.player.play() }
                     .onDisappear { session.player.pause() }
 
-                ForEach(Array(session.edl.notices.enumerated()), id: \.offset) { _, notice in
-                    noticeView(notice)
+                ForEach(Array(session.edl.notices.enumerated()), id: \.offset) { entry in
+                    noticeView(entry.element)
                 }
 
                 HStack(spacing: 6) {

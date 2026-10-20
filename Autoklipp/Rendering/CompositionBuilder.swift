@@ -33,16 +33,50 @@ struct RenderInputs: Sendable {
 /// transitions; each clip is extended by half of each transition on either side when the
 /// source has footage to spare. Stills have no track: the compositor draws them.
 enum CompositionBuilder {
-    enum BuildError: Error {
+    enum BuildError: LocalizedError {
         case emptyEdit
         case trackCreationFailed
         case missingVideoTrack(String)
+        case insertFailed(String, any Error)
+
+        var errorDescription: String? {
+            switch self {
+            case .emptyEdit: "empty clip list"
+            case .trackCreationFailed: "could not add a composition track"
+            case let .missingVideoTrack(id): "no video track in \(id)"
+            case let .insertFailed(what, error): "inserting \(what) failed: \(error.localizedDescription) \(error)"
+            }
+        }
     }
 
     private struct VideoSource {
         let track: AVAssetTrack
-        let duration: Double
+        /// Where the track has media, seconds; may differ from the file's duration.
+        let start: Double
+        let end: Double
         let orientation: CGImagePropertyOrientation
+    }
+
+    /// Inserts `start..<end` of a source track (clamped to where it has media) at `at`.
+    /// Returns the inserted source range.
+    @discardableResult
+    private static func insert(
+        _ start: Double, _ end: Double, of track: AVAssetTrack, available: CMTimeRange,
+        into target: AVMutableCompositionTrack, at: Double, what: @autoclosure () -> String
+    ) throws -> CMTimeRange {
+        let lower = CMTimeMaximum(time(start), available.start)
+        let upper = CMTimeMinimum(time(end), available.end)
+        let range = CMTimeRange(start: lower, end: upper)
+        guard range.duration > .zero else { return range }
+        do {
+            try target.insertTimeRange(range, of: track, at: time(at))
+        } catch {
+            throw BuildError.insertFailed(
+                "\(what()) [\(range.start.seconds)–\(range.end.seconds) of \(available.start.seconds)–\(available.end.seconds) at \(at)]",
+                error
+            )
+        }
+        return range
     }
 
     static func build(_ inputs: RenderInputs) async throws -> BuiltComposition {
@@ -52,13 +86,18 @@ enum CompositionBuilder {
         let total = time(edl.duration)
 
         // Carrier track spanning the whole film.
-        let blankAsset = AVURLAsset(url: try await BlankVideo.shared.url())
+        let blankURL = try await BlankVideo.shared.url()
+        let blankAsset = AVURLAsset(url: blankURL)
         guard let blankTrack = try await blankAsset.loadTracks(withMediaType: .video).first,
             let carrier = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         else { throw BuildError.trackCreationFailed }
-        let blankDuration = try await blankAsset.load(.duration)
-        try carrier.insertTimeRange(CMTimeRange(start: .zero, duration: blankDuration), of: blankTrack, at: .zero)
-        carrier.scaleTimeRange(CMTimeRange(start: .zero, duration: blankDuration), toDuration: total)
+        let blankRange = try await blankTrack.load(.timeRange)
+        do {
+            try carrier.insertTimeRange(blankRange, of: blankTrack, at: .zero)
+        } catch {
+            throw BuildError.insertFailed("carrier \(blankRange.start.seconds)–\(blankRange.end.seconds)", error)
+        }
+        carrier.scaleTimeRange(CMTimeRange(start: .zero, duration: blankRange.duration), toDuration: total)
 
         var videoTracks: [AVMutableCompositionTrack] = []
         func videoTrack(_ index: Int) throws -> AVMutableCompositionTrack {
@@ -85,9 +124,11 @@ enum CompositionBuilder {
                     guard let track = try await asset.loadTracks(withMediaType: .video).first else {
                         throw BuildError.missingVideoTrack(clip.mediaID)
                     }
-                    let duration = try await asset.load(.duration).seconds
-                    let transform = try await track.load(.preferredTransform)
-                    source = VideoSource(track: track, duration: duration, orientation: CGImagePropertyOrientation(videoTransform: transform))
+                    let (range, transform) = try await track.load(.timeRange, .preferredTransform)
+                    source = VideoSource(
+                        track: track, start: range.start.seconds, end: range.end.seconds,
+                        orientation: CGImagePropertyOrientation(videoTransform: transform)
+                    )
                     sources[clip.mediaID] = source
                 }
 
@@ -95,20 +136,23 @@ enum CompositionBuilder {
                 let rate = clip.playbackRate
                 let wantedBefore = clip.transitionIn.duration / 2
                 let wantedAfter = index + 1 < edl.clips.count ? edl.clips[index + 1].transitionIn.duration / 2 : 0
-                let before = max(0, min(wantedBefore, clip.sourceStart / rate))
-                let after = max(0, min(wantedAfter, (source.duration - clip.sourceEnd) / rate))
-                let sourceStart = max(0, clip.sourceStart - before * rate)
-                let sourceEnd = min(source.duration, clip.sourceEnd + after * rate)
-                let compositionStart = max(0, clip.timelineStart - before)
-                let compositionEnd = min(edl.duration, clip.timelineEnd + after)
+                let before = max(0, min(wantedBefore, (clip.sourceStart - source.start) / rate, clip.timelineStart))
+                let after = max(0, min(wantedAfter, (source.end - clip.sourceEnd) / rate, edl.duration - clip.timelineEnd))
+                let sourceStart = max(source.start, clip.sourceStart - before * rate)
+                let sourceEnd = min(source.end, clip.sourceEnd + after * rate)
+                let compositionStart = clip.timelineStart - before
+                let compositionEnd = clip.timelineEnd + after
                 guard sourceEnd - sourceStart > 0.01, compositionEnd - compositionStart > 0.01 else { continue }
 
                 let track = try videoTrack(videoCount % 2)
                 videoCount += 1
-                let sourceRange = CMTimeRange(start: time(sourceStart), end: time(sourceEnd))
-                try track.insertTimeRange(sourceRange, of: source.track, at: time(compositionStart))
+                let sourceRange = try insert(
+                    sourceStart, sourceEnd, of: source.track,
+                    available: CMTimeRange(start: time(source.start), end: time(source.end)),
+                    into: track, at: compositionStart, what: "clip \(index) (\(clip.mediaID))"
+                )
                 let wanted = time(compositionEnd - compositionStart)
-                if CMTimeCompare(sourceRange.duration, wanted) != 0 {
+                if sourceRange.duration > .zero, CMTimeCompare(sourceRange.duration, wanted) != 0 {
                     track.scaleTimeRange(CMTimeRange(start: time(compositionStart), duration: sourceRange.duration), toDuration: wanted)
                 }
                 content = .video(trackID: track.trackID, orientation: source.orientation)
@@ -130,13 +174,14 @@ enum CompositionBuilder {
             if let musicTrack = try await musicAsset.loadTracks(withMediaType: .audio).first,
                 let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
             {
-                let musicDuration = try await musicAsset.load(.duration).seconds
+                let available = try await musicTrack.load(.timeRange)
                 for segment in cue.segments {
                     let start = segment.filmStart
-                    let length = min(segment.duration, edl.duration - start, musicDuration - segment.trackStart)
+                    let length = min(segment.duration, edl.duration - start)
                     guard length > 0.01 else { continue }
-                    try track.insertTimeRange(
-                        CMTimeRange(start: time(segment.trackStart), duration: time(length)), of: musicTrack, at: time(start)
+                    try insert(
+                        segment.trackStart, segment.trackStart + length, of: musicTrack, available: available,
+                        into: track, at: start, what: "music at \(start)"
                     )
                 }
                 let parameters = AVMutableAudioMixInputParameters(track: track)
