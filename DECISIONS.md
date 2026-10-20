@@ -37,6 +37,12 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Utvecklingsmiljön saknar Mac.** Swift-verktygskedjan (Linux) används lokalt för ClipCore; allt
   som rör iOS byggs och testas i GitHub Actions på macOS-runner (simulator iPhone 17, iOS 26.5).
   (2026-10-20, fas 1)
+- **Appens tester körs ett i taget i CI** (`-parallel-testing-enabled NO`). Runnern har tre kärnor
+  och export-, analys- och renderingstesterna störde varandras tider när de gick parallellt.
+  (2026-10-20, fas 1)
+- **TestFlight utan Mac:** arbetsflödet `testflight.yml` arkiverar, signerar automatiskt med en
+  App Store Connect API-nyckel och laddar upp. Engångsstegen som kräver ägarens konto står i
+  `RELEASE.md`. (2026-10-20)
 
 ## 3. Mediaval och metadata
 
@@ -139,6 +145,10 @@ Format: **Beslut** – motivering – (datum, fas).
   bakgrunden byter kompositören till Core Images CPU-renderare när appen hamnar i bakgrunden, och en
   lokal notis säger till när filmen är klar. `BGContinuedProcessingTask` (iOS 26) är en möjlig
   förbättring för längre exporter. (2026-10-20, fas 1)
+- **Kompositören kräver bildbuffertar som delas med GPU:n** (IOSurface, Metal-kompatibla), både
+  för källbilder och utdata. Utan det kopierade Core Image varje bildruta via CPU:n: i simulatorn
+  1,3 s per 1080p-bildruta mot 25 ms med delade buffertar. En 60 s film exporteras nu på under en
+  minut i CI. Ett test (`ExportSpeedTests`) vakar över detta. (2026-10-20, fas 1)
 
 ## 6. Musik
 
@@ -246,10 +256,12 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Modellens stil- och titelförslag används bara när användaren inte själv valt** stil respektive
   skrivit en titel. Planen återanvänds för nya versioner så länge beskrivningen och materialet är
   desamma. (2026-10-20, fas 5)
-- **Testning:** CI:s simulatorer har ingen Apple Intelligence, så där testas reservläget (fältet
-  dolt, filmen görs ändå) och att en given plan följs (barnklipp i majoritet). Testet som frågar
-  den riktiga modellen ("only pictures with the children") körs bara där modellen finns – på en
-  iPhone med Apple Intelligence eller en Mac som har det. (2026-10-20, fas 5)
+- **Testning:** CI:s simulator säger att modellen finns men saknar dess filer, så genereringen
+  misslyckas där. CI testar därför att en beskrivning aldrig stoppar filmen (modellen saknas eller
+  fallerar → filmen görs ändå, med notis), reservläget utan Apple Intelligence och att en given
+  plan följs (barnklipp i majoritet). Testet som frågar den riktiga modellen ("only pictures with
+  the children") hoppar över sig självt i en simulator där modellen inte kan köras och körs på en
+  iPhone med Apple Intelligence. (2026-10-20, fas 5)
 
 ## 7. Spara och dela
 

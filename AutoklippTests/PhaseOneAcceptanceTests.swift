@@ -10,7 +10,7 @@ import Testing
 /// Phase 1 acceptance: "A 1-minute film of 20 mixed clips is exported to Photos, length 60 s ±1 s."
 @Suite("Phase 1 acceptance", .serialized)
 struct PhaseOneAcceptanceTests {
-    @Test(.timeLimit(.minutes(30)))
+    @Test(.timeLimit(.minutes(10)))
     func oneMinuteFilmOfTwentyMixedClipsExportsToPhotos() async throws {
         let folder = try TestMedia.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
