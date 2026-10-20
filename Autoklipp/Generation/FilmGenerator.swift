@@ -29,6 +29,8 @@ struct GenerationInput: Sendable {
     var originalAudio = false
     var lockedClips: [EDLClip] = []
     var exclusions: [Exclusion] = []
+    var title = ""
+    var endCredit = ""
 }
 
 extension GenerationInput {
@@ -42,7 +44,11 @@ extension GenerationInput {
             song: draft.song,
             seed: draft.seed,
             format: draft.format,
-            originalAudio: draft.originalAudio
+            originalAudio: draft.originalAudio,
+            lockedClips: draft.lockedClips,
+            exclusions: draft.exclusions,
+            title: draft.title,
+            endCredit: draft.endCredit
         )
     }
 }
@@ -57,7 +63,11 @@ struct GenerationOutput: Sendable {
 /// Runs analysis, planning and composition building, reporting each step.
 enum FilmGenerator {
     static func plan(_ input: GenerationInput) -> EditDecisionList {
-        let items = input.media.map(\.item)
+        Planner.plan(planningRequest(input))
+    }
+
+    /// The planner's view of a project; also the base for clip-strip edits.
+    static func planningRequest(_ input: GenerationInput) -> PlanningRequest {
         let target = input.targetDuration
         let music: MusicLayout
         if let song = input.song {
@@ -65,8 +75,8 @@ enum FilmGenerator {
         } else {
             music = MusicLayout.metronome(bpm: 100, filmDuration: target)
         }
-        let request = PlanningRequest(
-            media: items,
+        return PlanningRequest(
+            media: input.media.map(\.item),
             analyses: input.analyses,
             targetDuration: target,
             style: .preset(input.style),
@@ -75,9 +85,10 @@ enum FilmGenerator {
             seed: input.seed,
             lockedClips: input.lockedClips,
             exclusions: input.exclusions,
+            title: input.title,
+            endCredit: input.endCredit,
             originalAudio: input.originalAudio
         )
-        return Planner.plan(request)
     }
 
     static func generate(

@@ -3,6 +3,7 @@ import CoreImage
 import CoreMedia
 import CoreVideo
 import Foundation
+import UIKit
 
 /// Draws one frame of the film with Core Image: places each clip in the frame, moves stills
 /// (Ken Burns), applies the style's colour filter and blends neighbours during transitions.
@@ -12,6 +13,8 @@ final class FrameRenderer: @unchecked Sendable {
     private let bounds: CGRect
     private let black: CIImage
     private let white: CIImage
+    private let textLock = NSLock()
+    private var textImages: [String: CIImage] = [:]
 
     /// Sources whose aspect differs more than this from the frame are fitted over a blurred
     /// copy of themselves instead of being cropped.
@@ -51,7 +54,66 @@ final class FrameRenderer: @unchecked Sendable {
         } else {
             picture = layerImage(index, time, sourceFrame)
         }
-        return picture.composited(over: black).cropped(to: bounds)
+        var frame = picture.composited(over: black).cropped(to: bounds)
+        if let title = timeline.title {
+            frame = overlay(title.text, on: frame, alpha: Self.fade(time, from: 0.2, to: 0.2 + title.duration), large: true)
+        }
+        if let credit = timeline.endCredit {
+            let end = timeline.duration - 0.3
+            frame = overlay(credit.text, on: frame, alpha: Self.fade(time, from: end - credit.duration, to: end), large: false)
+        }
+        return frame
+    }
+
+    // MARK: Text
+
+    /// 0 outside `start...end`, 1 inside, with half-second fades.
+    static func fade(_ time: Double, from start: Double, to end: Double) -> Double {
+        guard time > start, time < end else { return 0 }
+        return min(1, (time - start) / 0.5, (end - time) / 0.5)
+    }
+
+    func overlay(_ text: String, on frame: CIImage, alpha: Double, large: Bool) -> CIImage {
+        guard alpha > 0.001, let image = textImage(text, large: large) else { return frame }
+        let faded = image.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha)])
+        return faded.composited(over: frame).cropped(to: bounds)
+    }
+
+    /// White text with a soft shadow, centred in the frame, drawn once and kept.
+    func textImage(_ text: String, large: Bool) -> CIImage? {
+        let key = "\(large)|\(text)"
+        if let cached = textLock.withLock({ textImages[key] }) { return cached }
+        let size = bounds.size
+        let fontSize = (large ? 0.075 : 0.05) * min(size.width, size.height)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let shadow = NSShadow()
+        shadow.shadowColor = UIColor.black.withAlphaComponent(0.6)
+        shadow.shadowBlurRadius = fontSize * 0.25
+        shadow.shadowOffset = .zero
+        let attributed = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: UIFont.systemFont(ofSize: fontSize, weight: large ? .bold : .semibold),
+                .foregroundColor: UIColor.white,
+                .paragraphStyle: paragraph,
+                .shadow: shadow,
+            ]
+        )
+        let width = size.width * 0.86
+        let textBounds = attributed.boundingRect(with: CGSize(width: width, height: size.height), options: [.usesLineFragmentOrigin], context: nil)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        let picture = renderer.image { _ in
+            let origin = CGPoint(x: (size.width - width) / 2, y: (size.height - textBounds.height) / 2)
+            attributed.draw(with: CGRect(origin: origin, size: CGSize(width: width, height: textBounds.height + fontSize)), options: [.usesLineFragmentOrigin], context: nil)
+        }
+        guard let cgImage = picture.cgImage else { return nil }
+        let image = CIImage(cgImage: cgImage)
+        textLock.withLock { textImages[key] = image }
+        return image
     }
 
     // MARK: Layers

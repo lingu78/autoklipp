@@ -6,9 +6,10 @@ struct RootView: View {
     var body: some View {
         @Bindable var model = model
         NavigationStack(path: $model.path) {
-            MediaSelectionView()
+            HomeView()
                 .navigationDestination(for: Route.self) { route in
                     switch route {
+                    case .media: MediaSelectionView()
                     case .length: LengthView()
                     case .style: StyleView()
                     case .generate: GenerateView()

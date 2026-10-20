@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ · %@": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@"
+          }
+        }
+      }
+    },
     "%lld BPM": {
       "localizations": {
         "sv": {
@@ -281,12 +291,32 @@
         }
       }
     },
+    "Change music": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Byt musik"
+          }
+        }
+      }
+    },
     "Change selection": {
       "localizations": {
         "sv": {
           "stringUnit": {
             "state": "translated",
             "value": "Ändra urvalet"
+          }
+        }
+      }
+    },
+    "Change style": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Byt stil"
           }
         }
       }
@@ -317,6 +347,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Filmisk"
+          }
+        }
+      }
+    },
+    "Clip %lld of %lld": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klipp %lld av %lld"
           }
         }
       }
@@ -371,6 +411,36 @@
         }
       }
     },
+    "Done": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klar"
+          }
+        }
+      }
+    },
+    "Drag to reorder · swipe up to remove · touch and hold to lock": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dra för att flytta · svep uppåt för att ta bort · håll inne för att låsa"
+          }
+        }
+      }
+    },
+    "End credit": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eftertext"
+          }
+        }
+      }
+    },
     "Energetic": {
       "localizations": {
         "sv": {
@@ -417,6 +487,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Snabba klipp på varje taktslag och klara färger."
+          }
+        }
+      }
+    },
+    "Film": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Film"
           }
         }
       }
@@ -501,12 +581,42 @@
         }
       }
     },
+    "Lock": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lås"
+          }
+        }
+      }
+    },
     "Long, soft crossfades and gentle colours.": {
       "localizations": {
         "sv": {
           "stringUnit": {
             "state": "translated",
             "value": "Långa, mjuka övertoningar och milda färger."
+          }
+        }
+      }
+    },
+    "Move earlier": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flytta tidigare"
+          }
+        }
+      }
+    },
+    "Move later": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flytta senare"
           }
         }
       }
@@ -581,6 +691,16 @@
         }
       }
     },
+    "OK": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
     "Open Autoklipp to save or share it.": {
       "localizations": {
         "sv": {
@@ -627,6 +747,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Provlyssna"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta bort"
           }
         }
       }
@@ -687,6 +817,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dela"
+          }
+        }
+      }
+    },
+    "Shown over the first seconds of the film.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visas över filmens första sekunder."
+          }
+        }
+      }
+    },
+    "Shown over the last seconds of the film.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visas över filmens sista sekunder."
+          }
+        }
+      }
+    },
+    "Something went wrong": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Något gick fel"
           }
         }
       }
@@ -771,6 +931,36 @@
         }
       }
     },
+    "This film could not be opened.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filmen gick inte att öppna."
+          }
+        }
+      }
+    },
+    "Title": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titel"
+          }
+        }
+      }
+    },
+    "Title and credits": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Titel och eftertext"
+          }
+        }
+      }
+    },
     "Travel": {
       "localizations": {
         "sv": {
@@ -791,12 +981,32 @@
         }
       }
     },
+    "Unlock": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lås upp"
+          }
+        }
+      }
+    },
     "Use your own audio file…": {
       "localizations": {
         "sv": {
           "stringUnit": {
             "state": "translated",
             "value": "Använd en egen ljudfil…"
+          }
+        }
+      }
+    },
+    "Video": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Film"
           }
         }
       }
@@ -831,12 +1041,32 @@
         }
       }
     },
+    "Your films": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dina filmer"
+          }
+        }
+      }
+    },
     "Your photos and videos are enough for about %@. The film will be shorter unless you add more.": {
       "localizations": {
         "sv": {
           "stringUnit": {
             "state": "translated",
             "value": "Dina bilder och filmer räcker till ungefär %@. Filmen blir kortare om du inte lägger till mer."
+          }
+        }
+      }
+    },
+    "locked": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "låst"
           }
         }
       }

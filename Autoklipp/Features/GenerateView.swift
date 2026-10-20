@@ -73,6 +73,7 @@ struct GenerateView: View {
             draft.edl = output.edl
             model.preview?.player.pause()
             model.preview = PreviewSession(edl: output.edl, built: output.built)
+            model.save()
             if model.path.last == .generate {
                 model.path.removeLast()
                 model.path.append(.preview)

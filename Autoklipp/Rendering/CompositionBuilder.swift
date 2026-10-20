@@ -241,7 +241,9 @@ enum CompositionBuilder {
         audioMix.inputParameters = audioParameters
 
         let renderSize = inputs.settings.renderSize
-        let timeline = RenderTimeline(renderSize: renderSize, duration: edl.duration, layers: layers)
+        let timeline = RenderTimeline(
+            renderSize: renderSize, duration: edl.duration, layers: layers, title: edl.title, endCredit: edl.endCredit
+        )
         let instruction = ClipInstruction(
             timeRange: CMTimeRange(start: .zero, duration: total),
             trackIDs: [carrier.trackID] + videoTracks.map(\.trackID),

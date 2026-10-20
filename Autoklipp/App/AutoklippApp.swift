@@ -1,4 +1,5 @@
 import AVFoundation
+import SwiftData
 import SwiftUI
 
 @main
@@ -15,6 +16,7 @@ struct AutoklippApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .modelContainer(model.container)
         }
         .onChange(of: scenePhase) { _, phase in
             // The compositor switches to CPU rendering while the GPU is off limits.

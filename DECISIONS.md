@@ -188,6 +188,34 @@ Format: **Beslut** – motivering – (datum, fas).
   och vinjett). Ett test kontrollerar att tempo, övergångar och färgbehandling verkligen skiljer
   sig åt. (2026-10-20, fas 3)
 
+## 6c. Justering och projekt (fas 4)
+
+- **Klippremsan ändrar klipplistan, inte filmen direkt** (F11). Flytta, ta bort och lås går via
+  `Planner.apply(_:to:request:)` i ClipCore: övriga klipp behåller ordning, in-punkter, övergångar
+  och Ken Burns-rörelser; bara längderna justeras på takten så att filmen fortfarande slutar på
+  mållängden. Den borttagna tiden fylls i första hand genom att grannklippen förlängs, och först
+  därefter med nya moment. (2026-10-20, fas 4)
+- **Gester:** dra en miniatyr för att flytta den, svep uppåt för att ta bort, håll inne för att
+  låsa eller ta bort via kontextmenyn. Samma åtgärder finns som VoiceOver-åtgärder ("Flytta
+  tidigare/senare", "Lås", "Ta bort"). (2026-10-20, fas 4)
+- **Borttaget material kommer aldrig tillbaka:** en borttagen stillbild utesluts helt, ett
+  borttaget filmklipp utesluter just det tidsavsnittet. Låsta klipp finns kvar i varje ny version
+  (F12) och vid byte av stil eller musik. (2026-10-20, fas 4)
+- **Efter en ändring byggs bara kompositionen om** (ingen analys, ingen export); spelaren hoppar
+  till det ändrade stället. Testet mäter tiden från ändring till spelbar förhandsvisning och
+  kräver under 3 s. (2026-10-20, fas 4)
+- **"Byt musik", "Byt stil", "En annan version" och "Exportera"** ligger under spelaren; musik och
+  stil väljs i ett ark och filmen görs om med samma frö, så att bara det som byttes märks.
+  (2026-10-20, fas 4)
+- **Projekt sparas automatiskt med SwiftData** (F15) när en film har genererats och efter varje
+  ändring. Varje projekt är en JSON-ögonblicksbild (media, analys, inställningar, klipplista) med
+  filnamn relativt projektmappen, eftersom appens containersökväg kan ändras mellan starter.
+  Miniatyren sparas som extern data. Startskärmen listar projekten; svep för att radera (mappen
+  med kopierade filer tas också bort). (2026-10-20, fas 4)
+- **Titel och eftertext (F14)** skrivs i ett ark och ritas av kompositören som vit text med
+  skugga, centrerad, med halvsekundstoning: titeln de första ~3 s, eftertexten de sista.
+  Texten ändrar inte klipplistans tajming. (2026-10-20, fas 4)
+
 ## 7. Spara och dela
 
 - **Sparar till Bilder med "endast lägga till"-behörighet** (`NSPhotoLibraryAddUsageDescription`);

@@ -72,6 +72,10 @@ public struct PlanningRequest: Sendable {
     public var seed: UInt64
     /// Clips the user locked; they are always part of the result.
     public var lockedClips: [EDLClip]
+    /// The user's own arrangement from the clip strip. When set, these clips are kept in this
+    /// order with their in-points and only re-timed; removed time is made up by lengthening
+    /// neighbours or, if needed, with new moments.
+    public var arrangement: [EDLClip]?
     public var exclusions: [Exclusion]
     public var director: DirectorPlan?
     public var frameRate: Int
@@ -89,6 +93,7 @@ public struct PlanningRequest: Sendable {
         musicTrackID: String? = nil,
         seed: UInt64 = 0,
         lockedClips: [EDLClip] = [],
+        arrangement: [EDLClip]? = nil,
         exclusions: [Exclusion] = [],
         director: DirectorPlan? = nil,
         frameRate: Int = 30,
@@ -104,6 +109,7 @@ public struct PlanningRequest: Sendable {
         self.musicTrackID = musicTrackID
         self.seed = seed
         self.lockedClips = lockedClips
+        self.arrangement = arrangement
         self.exclusions = exclusions
         self.director = director
         self.frameRate = frameRate
@@ -168,8 +174,11 @@ struct PlanningEngine {
         var start: Double
         var length: Double
         var score: Double
-        var locked: EDLClip?
+        /// A clip carried over from an earlier edit: keeps its id, in-point and look.
+        var anchor: EDLClip?
+        var isLocked = false
 
+        var locked: EDLClip? { isLocked ? anchor : nil }
         var end: Double { start + length }
         var center: Double { start + length / 2 }
     }
@@ -246,11 +255,31 @@ struct PlanningEngine {
 
     mutating func run() -> EditDecisionList {
         buildSources()
-        var moments = initialMoments()
-        moments = ordered(moments)
-        moments = removingNeighbourDuplicates(moments)
+        var moments: [Moment]
+        if let arrangement = request.arrangement {
+            // The user's order is kept as it is.
+            moments = arrangedMoments(arrangement)
+        } else {
+            moments = ordered(initialMoments())
+            moments = removingNeighbourDuplicates(moments)
+        }
         let (slots, shortage) = fit(moments)
         return makeEDL(slots: slots, shortage: shortage)
+    }
+
+    /// Moments for the clips of an earlier edit, in their order, minus removed material.
+    func arrangedMoments(_ clips: [EDLClip]) -> [Moment] {
+        clips.compactMap { clip in
+            guard let index = sourceIndexByID[clip.mediaID] else { return nil }
+            let source = sources[index]
+            if source.isStill {
+                return Moment(source: index, start: 0, length: expectedStill, score: clip.score, anchor: clip, isLocked: clip.isLocked)
+            }
+            let start = min(max(0, clip.sourceStart), max(0, source.item.duration - Timing.minVideoClip))
+            let length = min(max(clip.sourceDuration, Timing.minVideoClip), source.item.duration - start)
+            guard clip.isLocked || windowScore(source, start: start, length: length) >= 0 else { return nil }
+            return Moment(source: index, start: start, length: length, score: clip.score, anchor: clip, isLocked: clip.isLocked)
+        }
     }
 
     // MARK: Sources
@@ -338,7 +367,7 @@ struct PlanningEngine {
             let source = sources[index]
             let length = source.isStill ? expectedStill : min(max(clip.sourceDuration, Timing.minVideoClip), source.item.duration)
             let start = source.isStill ? 0 : min(max(0, clip.sourceStart), max(0, source.item.duration - length))
-            moments.append(Moment(source: index, start: start, length: length, score: clip.score, locked: clip))
+            moments.append(Moment(source: index, start: start, length: length, score: clip.score, anchor: clip, isLocked: true))
         }
         let lockedSources = Set(moments.map(\.source))
         let free = sources.indices.filter {
@@ -577,7 +606,7 @@ struct PlanningEngine {
                 var roomStart = position == 0 ? 0 : (result[sorted[position - 1]].moment.end + moment.start) / 2
                 var roomEnd = position == sorted.count - 1
                     ? source.item.duration : (moment.end + result[sorted[position + 1]].moment.start) / 2
-                if moment.locked != nil { roomStart = moment.start }
+                if moment.anchor != nil { roomStart = moment.start }
                 roomStart = min(roomStart, moment.start)
                 roomEnd = max(roomEnd, moment.end)
                 // Do not grow into ranges the user removed.
@@ -792,6 +821,7 @@ struct PlanningEngine {
         let filmEnd = shortage ? quantized(beatTime(total)) : quantized(target)
 
         var clips: [EDLClip] = []
+        var anchoredTransitions: [TransitionKind?] = []
         var beat = 0
         for (position, slot) in slots.enumerated() {
             let start = quantized(beatTime(beat))
@@ -812,8 +842,8 @@ struct PlanningEngine {
                     // Not enough footage in this room: use all of it, slowed down to fit.
                     sourceStart = slot.roomStart
                     sourceDuration = max(Timing.minVideoClip / 2, room)
-                } else if let locked = slot.moment.locked {
-                    sourceStart = min(max(locked.sourceStart, slot.roomStart), slot.roomEnd - duration)
+                } else if let anchor = slot.moment.anchor {
+                    sourceStart = min(max(anchor.sourceStart, slot.roomStart), slot.roomEnd - duration)
                 } else {
                     let ideal = slot.moment.center - duration / 2
                     sourceStart = min(max(ideal, slot.roomStart), slot.roomEnd - duration)
@@ -823,7 +853,8 @@ struct PlanningEngine {
                 score = max(0, windowScore(source, start: sourceStart, length: sourceDuration))
             }
 
-            let id = slot.moment.locked?.id ?? EDLClip.makeID(mediaID: item.id, sourceStart: sourceStart)
+            let id = slot.moment.anchor?.id ?? EDLClip.makeID(mediaID: item.id, sourceStart: sourceStart)
+            anchoredTransitions.append(slot.moment.anchor.map { $0.transitionIn.kind })
             clips.append(
                 EDLClip(
                     id: id,
@@ -836,8 +867,8 @@ struct PlanningEngine {
                     beats: slot.k,
                     transitionIn: .cut,
                     filter: style.filter,
-                    kenBurns: source.isStill ? kenBurns(for: source) : nil,
-                    isLocked: slot.moment.locked != nil,
+                    kenBurns: source.isStill ? (slot.moment.anchor?.kenBurns ?? kenBurns(for: source)) : nil,
+                    isLocked: slot.moment.isLocked,
                     score: score,
                     audioVolume: originalSoundVolume(source, start: sourceStart, length: sourceDuration, duration: duration)
                 )
@@ -847,7 +878,9 @@ struct PlanningEngine {
         // Transitions are centred on the cut and never longer than ~45 % of either neighbour.
         for index in clips.indices.dropFirst() {
             let weights = style.transitions.map(\.weight)
-            let kind = rng.weightedIndex(weights).map { style.transitions[$0].kind } ?? .cut
+            let drawn = rng.weightedIndex(weights).map { style.transitions[$0].kind } ?? .cut
+            // Clips carried over from an earlier edit keep how they enter.
+            let kind = anchoredTransitions[index] ?? drawn
             guard kind != .cut else { continue }
             let limit = 0.45 * min(clips[index - 1].duration, clips[index].duration)
             let fps = Double(max(1, request.frameRate))

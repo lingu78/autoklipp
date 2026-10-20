@@ -19,6 +19,11 @@ struct ProjectStorage: Sendable {
         directory.appending(path: "Media", directoryHint: .isDirectory)
     }
 
+    /// The user's own songs.
+    var musicDirectory: URL {
+        directory.appending(path: "Music", directoryHint: .isDirectory)
+    }
+
     var exportDirectory: URL {
         URL.temporaryDirectory.appending(path: "Exports", directoryHint: .isDirectory)
     }

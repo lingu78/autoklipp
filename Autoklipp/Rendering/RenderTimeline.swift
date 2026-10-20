@@ -24,6 +24,9 @@ struct RenderTimeline: Sendable {
     var renderSize: CGSize
     var duration: Double
     var layers: [Layer]
+    /// Text over the first and last seconds (F14).
+    var title: TextCard?
+    var endCredit: TextCard?
 
     /// Index of the layer that owns `time` (the latest layer starting at or before it).
     func layerIndex(at time: Double) -> Int? {

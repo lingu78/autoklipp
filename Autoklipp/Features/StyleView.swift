@@ -38,96 +38,18 @@ extension StyleID {
 /// Step 3: choose a style and a song.
 struct StyleView: View {
     @Environment(AppModel.self) private var model
-    @State private var previewPlayer: AVAudioPlayer?
-    @State private var playingSongID: String?
-    @State private var importingSong = false
     @State private var analysingSong = false
-    @State private var songMessage: String?
-
-    private var draft: ProjectDraft { model.draft }
 
     var body: some View {
-        @Bindable var draft = model.draft
         List {
-            Section("Style") {
-                ForEach(StyleID.allCases, id: \.self) { style in
-                    Button {
-                        draft.select(style: style)
-                    } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: style.symbol)
-                                .font(.title2)
-                                .frame(width: 36)
-                                .foregroundStyle(Color.accentColor)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(style.title).font(.headline)
-                                Text(style.summary).font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if draft.style == style {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(Color.accentColor)
-                                    .accessibilityHidden(true)
-                            }
-                        }
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(draft.style == style ? .isSelected : [])
-                }
-            }
-
-            Section {
-                if let custom = draft.customSong {
-                    songRow(id: custom.id, title: Text(custom.title), detail: Text("\(Int(custom.info.bpm.rounded())) BPM · own file"), url: custom.url, start: 0)
-                }
-                ForEach(orderedTracks) { track in
-                    songRow(
-                        id: track.id, title: Text(track.title),
-                        detail: track.suits(draft.style) ? Text("\(Int(track.bpm)) BPM · suits the style") : Text("\(Int(track.bpm)) BPM"),
-                        url: track.url, start: track.loopStart
-                    )
-                }
-                Button {
-                    importingSong = true
-                } label: {
-                    if analysingSong {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            Text("Finding the beat…")
-                        }
-                    } else {
-                        Label("Use your own audio file…", systemImage: "music.note.list")
-                    }
-                }
-                .disabled(analysingSong)
-            } header: {
-                Text("Music")
-            } footer: {
-                if let songMessage {
-                    Text(songMessage)
-                } else {
-                    Text("All built-in music is made for Autoklipp and free to use in your films.")
-                }
-            }
-
-            Section {
-                Toggle(isOn: $draft.originalAudio) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Sound from the videos")
-                        Text("The music is lowered while people talk or cheer.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+            StylePickerSection(draft: model.draft)
+            MusicPickerSection(draft: model.draft, analysingSong: $analysingSong)
+            SoundSection(draft: model.draft)
         }
         .navigationTitle("Style and music")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
             Button {
-                stopPreview()
                 model.path.append(.generate)
             } label: {
                 Label("Create film", systemImage: "wand.and.stars")
@@ -139,6 +61,106 @@ struct StyleView: View {
             .disabled(analysingSong)
             .padding()
             .background(.bar)
+        }
+    }
+}
+
+/// The styles to choose from.
+struct StylePickerSection: View {
+    let draft: ProjectDraft
+
+    var body: some View {
+        Section("Style") {
+            ForEach(StyleID.allCases, id: \.self) { style in
+                Button {
+                    draft.select(style: style)
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: style.symbol)
+                            .font(.title2)
+                            .frame(width: 36)
+                            .foregroundStyle(Color.accentColor)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(style.title).font(.headline)
+                            Text(style.summary).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if draft.style == style {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.accentColor)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(draft.style == style ? .isSelected : [])
+            }
+        }
+    }
+}
+
+/// The original-sound switch (F10).
+struct SoundSection: View {
+    @Bindable var draft: ProjectDraft
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $draft.originalAudio) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sound from the videos")
+                    Text("The music is lowered while people talk or cheer.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+/// Built-in songs (those made for the style first), previews and the user's own file.
+struct MusicPickerSection: View {
+    let draft: ProjectDraft
+    @Binding var analysingSong: Bool
+    @State private var previewPlayer: AVAudioPlayer?
+    @State private var playingSongID: String?
+    @State private var importingSong = false
+    @State private var songMessage: String?
+
+    var body: some View {
+        Section {
+            if let custom = draft.customSong {
+                songRow(id: custom.id, title: Text(custom.title), detail: Text("\(Int(custom.info.bpm.rounded())) BPM · own file"), url: custom.url, start: 0)
+            }
+            ForEach(orderedTracks) { track in
+                songRow(
+                    id: track.id, title: Text(track.title),
+                    detail: track.suits(draft.style) ? Text("\(Int(track.bpm)) BPM · suits the style") : Text("\(Int(track.bpm)) BPM"),
+                    url: track.url, start: track.loopStart
+                )
+            }
+            Button {
+                importingSong = true
+            } label: {
+                if analysingSong {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Finding the beat…")
+                    }
+                } else {
+                    Label("Use your own audio file…", systemImage: "music.note.list")
+                }
+            }
+            .disabled(analysingSong)
+        } header: {
+            Text("Music")
+        } footer: {
+            if let songMessage {
+                Text(songMessage)
+            } else {
+                Text("All built-in music is made for Autoklipp and free to use in your films.")
+            }
         }
         .fileImporter(isPresented: $importingSong, allowedContentTypes: [.audio]) { result in
             if case let .success(url) = result {
@@ -211,14 +233,13 @@ struct StyleView: View {
 
     /// Copies the file into the project and finds its beat.
     private func importSong(from url: URL) async {
-        let draft = model.draft
         analysingSong = true
         songMessage = nil
         defer { analysingSong = false }
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         do {
-            let folder = draft.storage.directory.appending(path: "Music", directoryHint: .isDirectory)
+            let folder = draft.storage.musicDirectory
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let id = "custom-\(UUID().uuidString)"
             let copy = folder.appending(path: "\(id).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)")
