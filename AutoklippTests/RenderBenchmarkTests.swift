@@ -1,72 +1,119 @@
+import AVFoundation
 import ClipCore
 import CoreImage
 import CoreVideo
 import Foundation
-import Metal
 import Testing
 
 @testable import Autoklipp
 
-/// Temporary diagnosis: how long one 1080×1920 frame takes to draw here, on the GPU and on the
-/// CPU path. Never fails; it only logs lines starting with PROBE.
-@Suite("Render benchmark", .serialized)
+/// Temporary diagnosis: drawing one 1080×1920 frame takes ~20 ms in CI, but exporting takes
+/// ~0.9 s per frame. This times the parts of an export separately. Never fails; it only logs
+/// lines starting with PROBE.
+@Suite("Export benchmark", .serialized)
 struct RenderBenchmarkTests {
-    @Test func timePerFrame() throws {
-        Self.log("Metal device: \(MTLCreateSystemDefaultDevice()?.name ?? "none")")
+    @Test func timePerFrame() async throws {
         let folder = try TestMedia.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
-        let portrait = folder.appending(path: "portrait.jpg")
-        let landscape = folder.appending(path: "landscape.jpg")
-        try TestMedia.writeImage(to: portrait, width: 1200, height: 1600, color: TestMedia.RGB.palette[0], date: nil)
-        try TestMedia.writeImage(to: landscape, width: 1600, height: 1200, color: TestMedia.RGB.palette[1], date: nil)
-        let zoom = KenBurns(startScale: 1, endScale: 1.15, startCenter: .center, endCenter: NormalizedPoint(x: 0.4, y: 0.45))
-        let layers = [
-            RenderTimeline.Layer(
-                content: .still(url: portrait, pixelWidth: 1200, pixelHeight: 1600), mediaID: "portrait", start: 0, end: 5,
-                transitionIn: .cut, filter: .warm, kenBurns: zoom
-            ),
-            RenderTimeline.Layer(
-                content: .still(url: landscape, pixelWidth: 1600, pixelHeight: 1200), mediaID: "landscape", start: 5, end: 10,
-                transitionIn: .cut, filter: .warm, kenBurns: zoom
-            ),
-            RenderTimeline.Layer(
-                content: .video(trackID: 1, orientation: .up), mediaID: "video", start: 10, end: 15,
-                transitionIn: .cut, filter: .warm, kenBurns: nil
-            ),
-        ]
-        let renderer = FrameRenderer(timeline: RenderTimeline(renderSize: CGSize(width: 1080, height: 1920), duration: 15, layers: layers))
-        let source = try Self.pixelBuffer(width: 640, height: 360)
-        let output = try Self.pixelBuffer(width: 1080, height: 1920)
-        let contexts = [
-            ("gpu", CIContext(options: [.cacheIntermediates: false])),
-            ("cpu", CIContext(options: [.useSoftwareRenderer: true, .cacheIntermediates: false])),
-        ]
-        for (name, context) in contexts {
-            for (label, start) in [("portrait still", 0.0), ("landscape still", 5.0), ("landscape video", 10.0)] {
-                let clock = ContinuousClock()
-                var elapsed = Duration.zero
-                for frame in 0...10 {
-                    let began = clock.now
-                    let image = renderer.image(at: start + 0.5 + Double(frame) * 0.4) { _ in source }
-                    context.render(image, to: output, bounds: CGRect(x: 0, y: 0, width: 1080, height: 1920), colorSpace: CGColorSpace(name: CGColorSpace.itur_709))
-                    if frame > 0 { elapsed += clock.now - began }
-                }
-                Self.log("\(name) \(label): \(elapsed / 10) per frame")
+        var media: [ImportedMedia] = []
+        for index in 0..<2 {
+            let url = folder.appending(path: "still-\(index).jpg")
+            try TestMedia.writeImage(
+                to: url, width: 1200, height: 1600, color: TestMedia.RGB.palette[index],
+                date: TestMedia.baseDate.addingTimeInterval(Double(index) * 60)
+            )
+            let info = try MediaMetadataReader.readImage(at: url)
+            let item = MediaItem(id: "s\(index)", kind: .photo, creationDate: info.date, pixelWidth: info.width, pixelHeight: info.height)
+            media.append(ImportedMedia(item: item, url: url))
+        }
+        let song = MusicCatalog.defaultTrack?.choice
+        let edl = FilmGenerator.plan(GenerationInput(media: media, targetDuration: 4, style: .travel, song: song, seed: 1, format: .portrait))
+        let built = try await FilmGenerator.build(edl, media: media, song: song, settings: RenderSettings(format: .portrait, resolution: .hd1080))
+        let frames = edl.duration * 30
+        Self.log("film: \(edl.duration) s, \(Int(frames)) frames")
+
+        // 1. Decoding and drawing only, through the compositor (no encoding).
+        await Self.time("read through the compositor", frames: frames) {
+            let reader = try AVAssetReader(asset: built.composition)
+            let tracks = try await built.composition.loadTracks(withMediaType: .video)
+            let output = AVAssetReaderVideoCompositionOutput(
+                videoTracks: tracks, videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            )
+            output.videoComposition = built.videoComposition
+            reader.add(output)
+            reader.startReading()
+            var count = 0
+            while output.copyNextSampleBuffer() != nil { count += 1 }
+            if reader.status != .completed { throw reader.error ?? TestMedia.TestError.couldNotWrite }
+            Self.log("  read \(count) frames")
+        }
+
+        // 2. Encoding only: plain 1080×1920 frames into H.264.
+        await Self.time("encode with AVAssetWriter", frames: frames) {
+            try await Self.encode(frames: Int(frames), to: folder.appending(path: "plain.mp4"))
+        }
+
+        // 3. The whole export, with the app's preset and with a fixed-size one.
+        await Self.time("export, highest quality", frames: frames) {
+            try await VideoExporter.export(built, resolution: .hd1080, to: folder.appending(path: "highest.mp4")) { _ in }
+        }
+        await Self.time("export, 1920x1080 preset", frames: frames) {
+            guard let session = AVAssetExportSession(asset: built.composition, presetName: AVAssetExportPreset1920x1080) else {
+                throw VideoExporter.ExportError.sessionUnavailable
             }
+            session.videoComposition = built.videoComposition
+            session.audioMix = built.audioMix
+            try await session.export(to: folder.appending(path: "preset1080.mp4"), as: .mp4)
         }
     }
 
-    static func pixelBuffer(width: Int, height: Int) throws -> CVPixelBuffer {
-        var buffer: CVPixelBuffer?
-        let attributes = [kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()] as CFDictionary
-        CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_32BGRA, attributes, &buffer)
-        guard let buffer else { throw TestMedia.TestError.couldNotWrite }
-        CVPixelBufferLockBaseAddress(buffer, [])
-        if let base = CVPixelBufferGetBaseAddress(buffer) {
-            memset(base, 0x80, CVPixelBufferGetDataSize(buffer))
+    static func encode(frames: Int, to url: URL) async throws {
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        let input = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 1080, AVVideoHeightKey: 1920]
+        )
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: 1080,
+                kCVPixelBufferHeightKey as String: 1920,
+            ]
+        )
+        writer.add(input)
+        guard writer.startWriting() else { throw writer.error ?? TestMedia.TestError.couldNotWrite }
+        writer.startSession(atSourceTime: .zero)
+        for frame in 0..<frames {
+            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            guard let pool = adaptor.pixelBufferPool else { throw TestMedia.TestError.couldNotWrite }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            guard let buffer else { throw TestMedia.TestError.couldNotWrite }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            if let base = CVPixelBufferGetBaseAddress(buffer) {
+                memset(base, Int32(frame * 4 % 256), CVPixelBufferGetDataSize(buffer))
+            }
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 30))
         }
-        CVPixelBufferUnlockBaseAddress(buffer, [])
-        return buffer
+        input.markAsFinished()
+        await writer.finishWriting()
+        guard writer.status == .completed else { throw writer.error ?? TestMedia.TestError.couldNotWrite }
+    }
+
+    static func time(_ label: String, frames: Double, _ work: () async throws -> Void) async {
+        let clock = ContinuousClock()
+        let started = clock.now
+        do {
+            try await work()
+            let elapsed = (clock.now - started).components
+            let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
+            log("\(label): \(Int(seconds * 1000 / max(1, frames))) ms per frame")
+        } catch {
+            log("\(label): failed: \(error)")
+        }
     }
 
     static func log(_ text: String) {

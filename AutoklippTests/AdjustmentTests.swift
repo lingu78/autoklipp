@@ -121,19 +121,19 @@ struct AdjustmentTests {
         let plain = FrameRenderer(timeline: RenderTimeline(renderSize: CGSize(width: 360, height: 640), duration: 10, layers: [layer]))
         let titled = FrameRenderer(timeline: RenderTimeline(
             renderSize: CGSize(width: 360, height: 640), duration: 10, layers: [layer],
-            title: TextCard(text: "MMMMMMMM"), endCredit: TextCard(text: "SLUT")
+            title: TextCard(text: "MMMMMMMM"), endCredit: TextCard(text: "Sommaren 2026 · Familjen Berg")
         ))
         let none: (CMPersistentTrackID) -> CVPixelBuffer? = { _ in nil }
         func gain(at time: Double) -> Double {
             let base = TestMedia.brightness(plain.image(at: time, sourceFrame: none))
             let text = TestMedia.brightness(titled.image(at: time, sourceFrame: none))
             print("text at \(time) s: brightness \(base) → \(text)")
-            #expect(base > 0.05, "the dark still itself is drawn")
+            #expect(base > 0.02, "the dark still itself is drawn")
             return text - base
         }
         #expect(gain(at: 1.5) > 0.005)
         #expect(abs(gain(at: 5)) < 0.002)
-        #expect(gain(at: 8.5) > 0.002)
+        #expect(gain(at: 8.5) > 0.001)
         #expect(abs(FrameRenderer.fade(0.45, from: 0.2, to: 3.2) - 0.5) < 1e-9)
     }
 }

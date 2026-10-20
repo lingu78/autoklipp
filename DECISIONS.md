@@ -162,13 +162,17 @@ Format: **Beslut** – motivering – (datum, fas).
   En stil föreslår sin låt automatiskt tills användaren själv väljer en. (2026-10-20, fas 3)
 - **Beat detection för egna ljudfiler:** ljudet avkodas en gång till 22 kHz mono; ett
   spektralflöde (log-komprimerat magnitudspektrum, FFT 1024, hopp 256 ≈ 11,6 ms) räknas med
-  Accelerate (`vDSP.FFT`); tempo tas ur autokorrelationen viktad mot ~110 BPM (bred vikt så att
-  både 70 och 140 BPM fungerar), och taktslagen placeras med dynamisk programmering (Ellis 2007)
-  och finjusteras till närmaste ansats. Själva taktalgoritmen ligger i ClipCore och testas på Linux.
+  Accelerate (`vDSP.FFT`); tempo tas ur autokorrelationen viktad mot ~120 BPM (en oktav bred),
+  och taktslagen placeras med dynamisk programmering (Ellis 2007) och finjusteras till närmaste
+  ansats. Själva taktalgoritmen ligger i ClipCore och testas på Linux.
   Avsnitt (lugnt/intensivt) för egna låtar tas ur ljudnivån per 8 takter. (2026-10-20, fas 3)
-- **Tempo kan ibland hittas i dubbel eller halv takt** för egna låtar. Klippen hamnar då ändå på
-  taktslag (eller mitt emellan, på åttondelar), så det accepteras; de inbyggda låtarna har exakt
-  takt. (2026-10-20, fas 3)
+- **Dubbel takt rättas, halv takt accepteras.** Hi-hat och bas på offbeat kan få spårningen att
+  följa åttondelar; då är vartannat slag tydligt svagare (mer än 12 %), och bara den starkare
+  hälften behålls. Halverad takt lägger fortfarande varje klipp på ett taktslag, medan dubbel takt
+  skulle lägga vartannat klipp mellan två slag – därför väljs alltid det säkra hållet. Halvering
+  görs bara om takten blir minst 60 BPM. Med detta hittas alla tolv inbyggda låtar i rätt takt
+  och minst 95 % av slagen ligger inom 50 ms. De inbyggda låtarna använder ändå sitt exakta facit.
+  (2026-10-20, fas 3)
 - **Acceptanstest för "inom 50 ms":** (1) beat detection på inbyggda låtar jämförs med facit från
   generatorn – visar också att AAC-avkodningen i AVFoundation inte förskjuter ljudet; (2) varje
   klippbyte i filmer gjorda med inbyggda låtar och (3) med en låt behandlad som egen fil
