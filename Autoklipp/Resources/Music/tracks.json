@@ -1,0 +1,62 @@
+{
+  "tracks": [
+    {
+      "id": "sommarvind",
+      "title": "Sommarvind",
+      "file": "sommarvind.m4a",
+      "bpm": 104,
+      "duration": 131.230748,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 9.230769,
+      "loopEnd": 120.0,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 9.230769,
+          "energy": 0.25
+        },
+        {
+          "start": 9.230769,
+          "end": 27.692308,
+          "energy": 0.5
+        },
+        {
+          "start": 27.692308,
+          "end": 46.153846,
+          "energy": 0.85
+        },
+        {
+          "start": 46.153846,
+          "end": 64.615385,
+          "energy": 0.55
+        },
+        {
+          "start": 64.615385,
+          "end": 83.076923,
+          "energy": 0.9
+        },
+        {
+          "start": 83.076923,
+          "end": 101.538462,
+          "energy": 0.4
+        },
+        {
+          "start": 101.538462,
+          "end": 120.0,
+          "energy": 0.95
+        },
+        {
+          "start": 120.0,
+          "end": 129.230769,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "travel"
+      ],
+      "license": "CC0-1.0"
+    }
+  ],
+  "generator": "tools/music/generate_music.py"
+}

@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clipcore-linux:
+    name: ClipCore (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift --version
+      - name: Test the clip logic
+        run: swift test --package-path Packages/ClipCore
+
+  ios:
+    name: iOS app (simulator)
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      XCODE: /Applications/Xcode_26.6.app
+      SIMULATOR: iPhone 17
+      RUNTIME: "26.5"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+      - name: Check the string catalog
+        run: python3 scripts/check_strings.py
+      - name: Test the clip logic (macOS)
+        run: swift test --package-path Packages/ClipCore
+      - name: Boot simulator and grant Photos add access
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, os, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime, devices in data.items():
+              if runtime.endswith("iOS-" + os.environ["RUNTIME"].replace(".", "-")):
+                  for device in devices:
+                      if device["name"] == os.environ["SIMULATOR"]:
+                          print(device["udid"]); sys.exit()
+          sys.exit("simulator not found")')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+      - name: Build and test
+        env:
+          TEST_RUNNER_AUTOKLIPP_CI: "1"
+        run: |
+          set +e
+          xcodebuild test \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination "id=$UDID" \
+            -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
+          status=$?
+          grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|TEST (SUCCEEDED|FAILED)|BUILD (SUCCEEDED|FAILED))' xcodebuild.log | tail -n 400
+          if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
+          exit $status
+      - name: Build for device (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -n 20
+      - name: Keep test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: |
+            TestResults.xcresult
+            xcodebuild.log
+          retention-days: 7
