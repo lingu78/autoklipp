@@ -56,8 +56,13 @@ final class ProjectDraft {
     /// Items that could not be read and were skipped.
     var skippedCount = 0
     var lengthChoice: LengthChoice = .preset(60)
-    var style: StyleID = .travel
-    var musicTrackID: String = MusicCatalog.defaultTrack?.id ?? ""
+    private(set) var style: StyleID = .travel
+    var musicTrackID: String = MusicCatalog.suggestion(for: .travel)?.id ?? ""
+    var musicChosenByUser = false
+    /// The user's own song, once imported.
+    var customSong: SongChoice?
+    /// Keep the videos' own sound under the music (F10).
+    var originalAudio = false
     var format: AspectFormat = .portrait
     var seed: UInt64 = UInt64.random(in: 1...UInt64.max)
     var edl: EditDecisionList?
@@ -80,7 +85,23 @@ final class ProjectDraft {
         }
     }
 
-    var musicTrack: MusicTrack? { MusicCatalog.track(id: musicTrackID) ?? MusicCatalog.defaultTrack }
+    /// Changes the style; until the user picks a song, the music follows the style.
+    func select(style newStyle: StyleID) {
+        style = newStyle
+        if !musicChosenByUser, let suggestion = MusicCatalog.suggestion(for: newStyle) {
+            musicTrackID = suggestion.id
+        }
+    }
+
+    func select(songID: String) {
+        musicTrackID = songID
+        musicChosenByUser = true
+    }
+
+    var song: SongChoice? {
+        if let customSong, customSong.id == musicTrackID { return customSong }
+        return (MusicCatalog.track(id: musicTrackID) ?? MusicCatalog.defaultTrack)?.choice
+    }
 
     var mediaURLs: [String: URL] {
         Dictionary(uniqueKeysWithValues: media.map { ($0.item.id, $0.url) })

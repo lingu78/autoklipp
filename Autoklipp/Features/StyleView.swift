@@ -1,6 +1,7 @@
 import AVFoundation
 import ClipCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension StyleID {
     var title: LocalizedStringResource {
@@ -38,16 +39,20 @@ extension StyleID {
 struct StyleView: View {
     @Environment(AppModel.self) private var model
     @State private var previewPlayer: AVAudioPlayer?
-    @State private var playingTrackID: String?
+    @State private var playingSongID: String?
+    @State private var importingSong = false
+    @State private var analysingSong = false
+    @State private var songMessage: String?
 
     private var draft: ProjectDraft { model.draft }
 
     var body: some View {
+        @Bindable var draft = model.draft
         List {
             Section("Style") {
                 ForEach(StyleID.allCases, id: \.self) { style in
                     Button {
-                        draft.style = style
+                        draft.select(style: style)
                     } label: {
                         HStack(spacing: 14) {
                             Image(systemName: style.symbol)
@@ -74,42 +79,48 @@ struct StyleView: View {
             }
 
             Section {
-                ForEach(MusicCatalog.tracks) { track in
-                    HStack {
-                        Button {
-                            draft.musicTrackID = track.id
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(track.title).font(.headline)
-                                    Text("\(Int(track.bpm)) BPM").font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if draft.musicTrackID == track.id {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(Color.accentColor)
-                                        .accessibilityHidden(true)
-                                }
-                            }
-                            .contentShape(.rect)
+                if let custom = draft.customSong {
+                    songRow(id: custom.id, title: Text(custom.title), detail: Text("\(Int(custom.info.bpm.rounded())) BPM · own file"), url: custom.url, start: 0)
+                }
+                ForEach(orderedTracks) { track in
+                    songRow(
+                        id: track.id, title: Text(track.title),
+                        detail: track.suits(draft.style) ? Text("\(Int(track.bpm)) BPM · suits the style") : Text("\(Int(track.bpm)) BPM"),
+                        url: track.url, start: track.loopStart
+                    )
+                }
+                Button {
+                    importingSong = true
+                } label: {
+                    if analysingSong {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Finding the beat…")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(draft.musicTrackID == track.id ? .isSelected : [])
-
-                        Button {
-                            togglePreview(track)
-                        } label: {
-                            Image(systemName: playingTrackID == track.id ? "stop.circle" : "play.circle")
-                                .font(.title2)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel(playingTrackID == track.id ? Text("Stop preview") : Text("Play preview of \(track.title)"))
+                    } else {
+                        Label("Use your own audio file…", systemImage: "music.note.list")
                     }
                 }
+                .disabled(analysingSong)
             } header: {
                 Text("Music")
             } footer: {
-                Text("All built-in music is made for Autoklipp and free to use in your films.")
+                if let songMessage {
+                    Text(songMessage)
+                } else {
+                    Text("All built-in music is made for Autoklipp and free to use in your films.")
+                }
+            }
+
+            Section {
+                Toggle(isOn: $draft.originalAudio) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sound from the videos")
+                        Text("The music is lowered while people talk or cheer.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
         .navigationTitle("Style and music")
@@ -125,28 +136,102 @@ struct StyleView: View {
                     .padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(analysingSong)
             .padding()
             .background(.bar)
+        }
+        .fileImporter(isPresented: $importingSong, allowedContentTypes: [.audio]) { result in
+            if case let .success(url) = result {
+                Task { await importSong(from: url) }
+            }
         }
         .onDisappear(perform: stopPreview)
     }
 
-    private func togglePreview(_ track: MusicTrack) {
-        if playingTrackID == track.id {
+    /// Songs made for the current style first.
+    private var orderedTracks: [MusicTrack] {
+        let style = draft.style
+        return MusicCatalog.tracks.filter { $0.suits(style) } + MusicCatalog.tracks.filter { !$0.suits(style) }
+    }
+
+    private func songRow(id: String, title: Text, detail: Text, url: URL?, start: Double) -> some View {
+        let selected = draft.musicTrackID == id
+        return HStack {
+            Button {
+                draft.select(songID: id)
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        title.font(.headline)
+                        detail.font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if selected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+
+            if let url {
+                Button {
+                    togglePreview(id: id, url: url, start: start)
+                } label: {
+                    Image(systemName: playingSongID == id ? "stop.circle" : "play.circle")
+                        .font(.title2)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(playingSongID == id ? Text("Stop preview") : Text("Play preview"))
+            }
+        }
+    }
+
+    private func togglePreview(id: String, url: URL, start: Double) {
+        if playingSongID == id {
             stopPreview()
             return
         }
         stopPreview()
-        guard let url = track.url, let player = try? AVAudioPlayer(contentsOf: url) else { return }
-        player.currentTime = track.loopStart
+        guard let player = try? AVAudioPlayer(contentsOf: url) else { return }
+        player.currentTime = start
         player.play()
         previewPlayer = player
-        playingTrackID = track.id
+        playingSongID = id
     }
 
     private func stopPreview() {
         previewPlayer?.stop()
         previewPlayer = nil
-        playingTrackID = nil
+        playingSongID = nil
+    }
+
+    /// Copies the file into the project and finds its beat.
+    private func importSong(from url: URL) async {
+        let draft = model.draft
+        analysingSong = true
+        songMessage = nil
+        defer { analysingSong = false }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let folder = draft.storage.directory.appending(path: "Music", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let id = "custom-\(UUID().uuidString)"
+            let copy = folder.appending(path: "\(id).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)")
+            try FileManager.default.copyItem(at: url, to: copy)
+            let info = try await AudioAnalyzer.trackInfo(id: id, url: copy)
+            draft.customSong = SongChoice(
+                id: id, title: url.deletingPathExtension().lastPathComponent, url: copy, info: info, isCustom: true
+            )
+            draft.select(songID: id)
+        } catch AudioAnalyzer.AnalysisError.noBeat {
+            songMessage = String(localized: "No steady beat was found in that song. Try another one.")
+        } catch {
+            songMessage = String(localized: "That file could not be read. Songs bought in Apple Music are protected and cannot be used.")
+        }
     }
 }

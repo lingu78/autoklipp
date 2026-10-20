@@ -156,6 +156,38 @@ Format: **Beslut** – motivering – (datum, fas).
   Avkodning med ffmpeg visar ingen förskjutning mot originalet; att AVFoundation avkodar utan
   förskjutning verifieras med beat detection i fas 3. (2026-10-20, fas 1)
 
+## 6b. Rytm, stilar och ljudmix (fas 3)
+
+- **Biblioteket har 12 egengenererade låtar (CC0)**, 72–132 BPM, minst två per stil (F9: minst tio).
+  En stil föreslår sin låt automatiskt tills användaren själv väljer en. (2026-10-20, fas 3)
+- **Beat detection för egna ljudfiler:** ljudet avkodas en gång till 22 kHz mono; ett
+  spektralflöde (log-komprimerat magnitudspektrum, FFT 1024, hopp 256 ≈ 11,6 ms) räknas med
+  Accelerate (`vDSP.FFT`); tempo tas ur autokorrelationen viktad mot ~110 BPM (bred vikt så att
+  både 70 och 140 BPM fungerar), och taktslagen placeras med dynamisk programmering (Ellis 2007)
+  och finjusteras till närmaste ansats. Själva taktalgoritmen ligger i ClipCore och testas på Linux.
+  Avsnitt (lugnt/intensivt) för egna låtar tas ur ljudnivån per 8 takter. (2026-10-20, fas 3)
+- **Tempo kan ibland hittas i dubbel eller halv takt** för egna låtar. Klippen hamnar då ändå på
+  taktslag (eller mitt emellan, på åttondelar), så det accepteras; de inbyggda låtarna har exakt
+  takt. (2026-10-20, fas 3)
+- **Acceptanstest för "inom 50 ms":** (1) beat detection på inbyggda låtar jämförs med facit från
+  generatorn – visar också att AAC-avkodningen i AVFoundation inte förskjuter ljudet; (2) varje
+  klippbyte i filmer gjorda med inbyggda låtar och (3) med en låt behandlad som egen fil
+  (detekterade taktslag) mäts mot de verkliga taktslagen. Klippbyten avrundas till hela
+  bildrutor (30 fps), vilket ger högst ~17 ms fel. (2026-10-20, fas 3)
+- **Originalljud (F10) är av som standard** – filmen bärs av musiken; reglaget "Ljud från filmerna"
+  slår på det. Med originalljud på följer varje klipps ljud bilden, tonas genom övergångarna, och
+  musiken sänks till 30 % under klipp där analysen hört högt ljud (tal, jubel, från −22 dBFS).
+  Tysta klipp behåller musiken och får lägre originalljud. Slowmotion-klipp är tysta.
+  (2026-10-20, fas 3)
+- **Egen ljudfil väljs med systemets filväljare** och kopieras in i projektet. Låtar köpta i Apple
+  Music är DRM-skyddade och kan inte läsas; appen säger det i klartext. (2026-10-20, fas 3)
+- **Stilarna skiljer sig i tempo, övergångar, färg och musik:** Lugn (4–8 slag, mjuka
+  övertoningar, mild färg), Energisk (1–2 slag, mest raka klipp och zoom/blixt, klara färger),
+  Nostalgisk (2–4 slag, övertoning och vit toning, blekt filmkänsla med vinjett), Resa (2–4 slag,
+  klipp och glidande övergångar, varmt ljus) och Filmisk (2–6 slag, toning via svart, dämpade färger
+  och vinjett). Ett test kontrollerar att tempo, övergångar och färgbehandling verkligen skiljer
+  sig åt. (2026-10-20, fas 3)
+
 ## 7. Spara och dela
 
 - **Sparar till Bilder med "endast lägga till"-behörighet** (`NSPhotoLibraryAddUsageDescription`);

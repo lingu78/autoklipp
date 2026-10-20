@@ -57,6 +57,21 @@ enum CompositionBuilder {
         let start: Double
         let end: Double
         let orientation: CGImagePropertyOrientation
+        /// The video's own sound, when it has any.
+        let sound: AVAssetTrack?
+        let soundRange: CMTimeRange
+    }
+
+    /// Applies a keyframe curve as volume ramps.
+    private static func apply(_ keys: [VolumeKeyframe], to parameters: AVMutableAudioMixInputParameters) {
+        guard let first = keys.first else { return }
+        parameters.setVolume(Float(first.volume), at: time(first.time))
+        for (from, to) in zip(keys, keys.dropFirst()) where to.time - from.time > 1e-3 {
+            parameters.setVolumeRamp(
+                fromStartVolume: Float(from.volume), toEndVolume: Float(to.volume),
+                timeRange: CMTimeRange(start: time(from.time), end: time(to.time))
+            )
+        }
     }
 
     /// Inserts `start..<end` of a source track (clamped to where it has media) at `at`.
@@ -119,6 +134,9 @@ enum CompositionBuilder {
         var sources: [String: VideoSource] = [:]
         var layers: [RenderTimeline.Layer] = []
         var videoCount = 0
+        // The videos' own sound follows the same alternating tracks as the pictures.
+        var soundTracks: [AVMutableCompositionTrack?] = [nil, nil]
+        var soundKeys: [[VolumeKeyframe]] = [[], []]
         for (index, clip) in edl.clips.enumerated() {
             guard let media = inputs.media[clip.mediaID] else { continue }
             let content: RenderTimeline.Layer.Content
@@ -132,9 +150,12 @@ enum CompositionBuilder {
                         throw BuildError.missingVideoTrack(clip.mediaID)
                     }
                     let (range, transform) = try await track.load(.timeRange, .preferredTransform)
+                    let sound = try await asset.loadTracks(withMediaType: .audio).first
+                    let soundRange = try await sound?.load(.timeRange) ?? .zero
                     source = VideoSource(
                         asset: asset, track: track, start: range.start.seconds, end: range.end.seconds,
-                        orientation: CGImagePropertyOrientation(videoTransform: transform)
+                        orientation: CGImagePropertyOrientation(videoTransform: transform),
+                        sound: sound, soundRange: soundRange
                     )
                     sources[clip.mediaID] = source
                 }
@@ -151,8 +172,21 @@ enum CompositionBuilder {
                 let compositionEnd = clip.timelineEnd + after
                 guard sourceEnd - sourceStart > 0.01, compositionEnd - compositionStart > 0.01 else { continue }
 
-                let track = try videoTrack(videoCount % 2)
+                let lane = videoCount % 2
+                let track = try videoTrack(lane)
                 videoCount += 1
+                if clip.audioVolume > 0, let sound = source.sound, abs(clip.playbackRate - 1) < 0.05 {
+                    if soundTracks[lane] == nil {
+                        soundTracks[lane] = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                    }
+                    if let soundTrack = soundTracks[lane] {
+                        try insert(
+                            sourceStart, sourceEnd, of: sound, available: source.soundRange,
+                            into: soundTrack, at: compositionStart, what: "sound of clip \(index)"
+                        )
+                        soundKeys[lane] += AudioMixPlan.clipKeyframes(for: edl, clipIndex: index)
+                    }
+                }
                 let sourceRange = try insert(
                     sourceStart, sourceEnd, of: source.track,
                     available: CMTimeRange(start: time(source.start), end: time(source.end)),
@@ -191,18 +225,17 @@ enum CompositionBuilder {
                         into: track, at: start, what: "music at \(start)"
                     )
                 }
+                // Full volume, lowered under loud original sound, faded out at the end.
                 let parameters = AVMutableAudioMixInputParameters(track: track)
-                let volume = Float(cue.volume)
-                parameters.setVolume(volume, at: .zero)
-                let fade = min(cue.fadeOut, edl.duration / 2)
-                if fade > 0 {
-                    parameters.setVolumeRamp(
-                        fromStartVolume: volume, toEndVolume: 0,
-                        timeRange: CMTimeRange(start: time(edl.duration - fade), end: total)
-                    )
-                }
+                apply(AudioMixPlan.musicKeyframes(for: edl), to: parameters)
                 audioParameters.append(parameters)
             }
+        }
+        for (lane, soundTrack) in soundTracks.enumerated() {
+            guard let soundTrack else { continue }
+            let parameters = AVMutableAudioMixInputParameters(track: soundTrack)
+            apply(soundKeys[lane], to: parameters)
+            audioParameters.append(parameters)
         }
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = audioParameters

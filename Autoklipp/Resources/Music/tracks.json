@@ -1,6 +1,407 @@
 {
   "tracks": [
     {
+      "id": "morgondimma",
+      "title": "Morgondimma",
+      "file": "morgondimma.m4a",
+      "bpm": 72,
+      "duration": 188.666667,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 13.333333,
+      "loopEnd": 173.333333,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 13.333333,
+          "energy": 0.25
+        },
+        {
+          "start": 13.333333,
+          "end": 40.0,
+          "energy": 0.5
+        },
+        {
+          "start": 40.0,
+          "end": 66.666667,
+          "energy": 0.85
+        },
+        {
+          "start": 66.666667,
+          "end": 93.333333,
+          "energy": 0.55
+        },
+        {
+          "start": 93.333333,
+          "end": 120.0,
+          "energy": 0.9
+        },
+        {
+          "start": 120.0,
+          "end": 146.666667,
+          "energy": 0.4
+        },
+        {
+          "start": 146.666667,
+          "end": 173.333333,
+          "energy": 0.95
+        },
+        {
+          "start": 173.333333,
+          "end": 186.666667,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "calm"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "stilla-vatten",
+      "title": "Stilla vatten",
+      "file": "stilla-vatten.m4a",
+      "bpm": 84,
+      "duration": 162.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 11.428571,
+      "loopEnd": 148.571429,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 11.428571,
+          "energy": 0.25
+        },
+        {
+          "start": 11.428571,
+          "end": 34.285714,
+          "energy": 0.5
+        },
+        {
+          "start": 34.285714,
+          "end": 57.142857,
+          "energy": 0.85
+        },
+        {
+          "start": 57.142857,
+          "end": 80.0,
+          "energy": 0.55
+        },
+        {
+          "start": 80.0,
+          "end": 102.857143,
+          "energy": 0.9
+        },
+        {
+          "start": 102.857143,
+          "end": 125.714286,
+          "energy": 0.4
+        },
+        {
+          "start": 125.714286,
+          "end": 148.571429,
+          "energy": 0.95
+        },
+        {
+          "start": 148.571429,
+          "end": 160.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "calm"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "full-fart",
+      "title": "Full fart",
+      "file": "full-fart.m4a",
+      "bpm": 128,
+      "duration": 107.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 7.5,
+      "loopEnd": 97.5,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 7.5,
+          "energy": 0.25
+        },
+        {
+          "start": 7.5,
+          "end": 22.5,
+          "energy": 0.5
+        },
+        {
+          "start": 22.5,
+          "end": 37.5,
+          "energy": 0.85
+        },
+        {
+          "start": 37.5,
+          "end": 52.5,
+          "energy": 0.55
+        },
+        {
+          "start": 52.5,
+          "end": 67.5,
+          "energy": 0.9
+        },
+        {
+          "start": 67.5,
+          "end": 82.5,
+          "energy": 0.4
+        },
+        {
+          "start": 82.5,
+          "end": 97.5,
+          "energy": 0.95
+        },
+        {
+          "start": 97.5,
+          "end": 105.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "energetic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "ljusar",
+      "title": "Ljusår",
+      "file": "ljusar.m4a",
+      "bpm": 124,
+      "duration": 110.387075,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 7.741935,
+      "loopEnd": 100.645161,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 7.741935,
+          "energy": 0.25
+        },
+        {
+          "start": 7.741935,
+          "end": 23.225806,
+          "energy": 0.5
+        },
+        {
+          "start": 23.225806,
+          "end": 38.709677,
+          "energy": 0.85
+        },
+        {
+          "start": 38.709677,
+          "end": 54.193548,
+          "energy": 0.55
+        },
+        {
+          "start": 54.193548,
+          "end": 69.677419,
+          "energy": 0.9
+        },
+        {
+          "start": 69.677419,
+          "end": 85.16129,
+          "energy": 0.4
+        },
+        {
+          "start": 85.16129,
+          "end": 100.645161,
+          "energy": 0.95
+        },
+        {
+          "start": 100.645161,
+          "end": 108.387097,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "energetic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "hoppborg",
+      "title": "Hoppborg",
+      "file": "hoppborg.m4a",
+      "bpm": 132,
+      "duration": 103.818163,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 7.272727,
+      "loopEnd": 94.545455,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 7.272727,
+          "energy": 0.25
+        },
+        {
+          "start": 7.272727,
+          "end": 21.818182,
+          "energy": 0.5
+        },
+        {
+          "start": 21.818182,
+          "end": 36.363636,
+          "energy": 0.85
+        },
+        {
+          "start": 36.363636,
+          "end": 50.909091,
+          "energy": 0.55
+        },
+        {
+          "start": 50.909091,
+          "end": 65.454545,
+          "energy": 0.9
+        },
+        {
+          "start": 65.454545,
+          "end": 80.0,
+          "energy": 0.4
+        },
+        {
+          "start": 80.0,
+          "end": 94.545455,
+          "energy": 0.95
+        },
+        {
+          "start": 94.545455,
+          "end": 101.818182,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "energetic",
+        "travel"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "gamla-foton",
+      "title": "Gamla foton",
+      "file": "gamla-foton.m4a",
+      "bpm": 86,
+      "duration": 158.279048,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 11.162791,
+      "loopEnd": 145.116279,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 11.162791,
+          "energy": 0.25
+        },
+        {
+          "start": 11.162791,
+          "end": 33.488372,
+          "energy": 0.5
+        },
+        {
+          "start": 33.488372,
+          "end": 55.813953,
+          "energy": 0.85
+        },
+        {
+          "start": 55.813953,
+          "end": 78.139535,
+          "energy": 0.55
+        },
+        {
+          "start": 78.139535,
+          "end": 100.465116,
+          "energy": 0.9
+        },
+        {
+          "start": 100.465116,
+          "end": 122.790698,
+          "energy": 0.4
+        },
+        {
+          "start": 122.790698,
+          "end": 145.116279,
+          "energy": 0.95
+        },
+        {
+          "start": 145.116279,
+          "end": 156.27907,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "nostalgic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "sommaren-da",
+      "title": "Sommaren då",
+      "file": "sommaren-da.m4a",
+      "bpm": 92,
+      "duration": 148.086939,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 10.434783,
+      "loopEnd": 135.652174,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 10.434783,
+          "energy": 0.25
+        },
+        {
+          "start": 10.434783,
+          "end": 31.304348,
+          "energy": 0.5
+        },
+        {
+          "start": 31.304348,
+          "end": 52.173913,
+          "energy": 0.85
+        },
+        {
+          "start": 52.173913,
+          "end": 73.043478,
+          "energy": 0.55
+        },
+        {
+          "start": 73.043478,
+          "end": 93.913043,
+          "energy": 0.9
+        },
+        {
+          "start": 93.913043,
+          "end": 114.782609,
+          "energy": 0.4
+        },
+        {
+          "start": 114.782609,
+          "end": 135.652174,
+          "energy": 0.95
+        },
+        {
+          "start": 135.652174,
+          "end": 146.086957,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "nostalgic",
+        "calm"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
       "id": "sommarvind",
       "title": "Sommarvind",
       "file": "sommarvind.m4a",
@@ -54,6 +455,237 @@
       ],
       "styles": [
         "travel"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "vagen-soderut",
+      "title": "Vägen söderut",
+      "file": "vagen-soderut.m4a",
+      "bpm": 112,
+      "duration": 122.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 8.571429,
+      "loopEnd": 111.428571,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 8.571429,
+          "energy": 0.25
+        },
+        {
+          "start": 8.571429,
+          "end": 25.714286,
+          "energy": 0.5
+        },
+        {
+          "start": 25.714286,
+          "end": 42.857143,
+          "energy": 0.85
+        },
+        {
+          "start": 42.857143,
+          "end": 60.0,
+          "energy": 0.55
+        },
+        {
+          "start": 60.0,
+          "end": 77.142857,
+          "energy": 0.9
+        },
+        {
+          "start": 77.142857,
+          "end": 94.285714,
+          "energy": 0.4
+        },
+        {
+          "start": 94.285714,
+          "end": 111.428571,
+          "energy": 0.95
+        },
+        {
+          "start": 111.428571,
+          "end": 120.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "travel",
+        "energetic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "horisont",
+      "title": "Horisont",
+      "file": "horisont.m4a",
+      "bpm": 98,
+      "duration": 139.142857,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 9.795918,
+      "loopEnd": 127.346939,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 9.795918,
+          "energy": 0.25
+        },
+        {
+          "start": 9.795918,
+          "end": 29.387755,
+          "energy": 0.5
+        },
+        {
+          "start": 29.387755,
+          "end": 48.979592,
+          "energy": 0.85
+        },
+        {
+          "start": 48.979592,
+          "end": 68.571429,
+          "energy": 0.55
+        },
+        {
+          "start": 68.571429,
+          "end": 88.163265,
+          "energy": 0.9
+        },
+        {
+          "start": 88.163265,
+          "end": 107.755102,
+          "energy": 0.4
+        },
+        {
+          "start": 107.755102,
+          "end": 127.346939,
+          "energy": 0.95
+        },
+        {
+          "start": 127.346939,
+          "end": 137.142857,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "travel",
+        "cinematic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "fjallvidd",
+      "title": "Fjällvidd",
+      "file": "fjallvidd.m4a",
+      "bpm": 76,
+      "duration": 178.842086,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 12.631579,
+      "loopEnd": 164.210526,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 12.631579,
+          "energy": 0.25
+        },
+        {
+          "start": 12.631579,
+          "end": 37.894737,
+          "energy": 0.5
+        },
+        {
+          "start": 37.894737,
+          "end": 63.157895,
+          "energy": 0.85
+        },
+        {
+          "start": 63.157895,
+          "end": 88.421053,
+          "energy": 0.55
+        },
+        {
+          "start": 88.421053,
+          "end": 113.684211,
+          "energy": 0.9
+        },
+        {
+          "start": 113.684211,
+          "end": 138.947368,
+          "energy": 0.4
+        },
+        {
+          "start": 138.947368,
+          "end": 164.210526,
+          "energy": 0.95
+        },
+        {
+          "start": 164.210526,
+          "end": 176.842105,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "cinematic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "ljuset-faller",
+      "title": "Ljuset faller",
+      "file": "ljuset-faller.m4a",
+      "bpm": 90,
+      "duration": 151.333311,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 10.666667,
+      "loopEnd": 138.666667,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 10.666667,
+          "energy": 0.25
+        },
+        {
+          "start": 10.666667,
+          "end": 32.0,
+          "energy": 0.5
+        },
+        {
+          "start": 32.0,
+          "end": 53.333333,
+          "energy": 0.85
+        },
+        {
+          "start": 53.333333,
+          "end": 74.666667,
+          "energy": 0.55
+        },
+        {
+          "start": 74.666667,
+          "end": 96.0,
+          "energy": 0.9
+        },
+        {
+          "start": 96.0,
+          "end": 117.333333,
+          "energy": 0.4
+        },
+        {
+          "start": 117.333333,
+          "end": 138.666667,
+          "energy": 0.95
+        },
+        {
+          "start": 138.666667,
+          "end": 149.333333,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "cinematic",
+        "nostalgic"
       ],
       "license": "CC0-1.0"
     }

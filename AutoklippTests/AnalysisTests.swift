@@ -57,7 +57,7 @@ struct AnalysisTests {
         // The planner keeps out of the blurred and shaky seconds.
         let input = GenerationInput(
             media: [media], analyses: [media.id: analysis], targetDuration: 5, style: .travel,
-            track: MusicCatalog.defaultTrack, seed: 9, format: .portrait
+            song: MusicCatalog.defaultTrack?.choice, seed: 9, format: .portrait
         )
         let edl = FilmGenerator.plan(input)
         #expect(abs(edl.duration - 5) <= Timing.lengthTolerance)
@@ -127,7 +127,7 @@ struct AnalysisTests {
         for seed in UInt64(1)...5 {
             let input = GenerationInput(
                 media: media, analyses: analyses, targetDuration: 8, style: .energetic,
-                track: MusicCatalog.defaultTrack, seed: seed, format: .portrait
+                song: MusicCatalog.defaultTrack?.choice, seed: seed, format: .portrait
             )
             let edl = FilmGenerator.plan(input)
             #expect(edl.clips.contains { $0.mediaID == "portrait" }, "seed \(seed) left out the face")

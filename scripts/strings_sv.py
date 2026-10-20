@@ -57,7 +57,16 @@ STRINGS = {
     "Next": "Nästa",
     "Pick photos and videos, choose a length and get a finished film with music.":
         "Välj bilder och filmer, välj en längd och få en färdig film med musik.",
-    "Play preview of %@": "Spela upp en provlyssning av %@",
+    "Play preview": "Provlyssna",
+    "%lld BPM · own file": "%lld BPM · egen fil",
+    "%lld BPM · suits the style": "%lld BPM · passar stilen",
+    "Finding the beat…": "Letar efter takten…",
+    "Use your own audio file…": "Använd en egen ljudfil…",
+    "Sound from the videos": "Ljud från filmerna",
+    "The music is lowered while people talk or cheer.": "Musiken sänks när någon pratar eller jublar.",
+    "No steady beat was found in that song. Try another one.": "Ingen jämn takt hittades i låten. Prova en annan.",
+    "That file could not be read. Songs bought in Apple Music are protected and cannot be used.":
+        "Filen gick inte att läsa. Låtar från Apple Music är skyddade och kan inte användas.",
     "Stop preview": "Stoppa provlyssningen",
     "Rendering… %@": "Renderar… %@",
     "%lld BPM": "%lld BPM",

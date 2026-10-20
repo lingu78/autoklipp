@@ -1,6 +1,15 @@
 import ClipCore
 import Foundation
 
+/// The song under a film: from the built-in library or the user's own file.
+struct SongChoice: Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let url: URL
+    let info: TrackInfo
+    let isCustom: Bool
+}
+
 /// A song from the built-in library (Resources/Music/tracks.json).
 struct MusicTrack: Identifiable, Hashable, Sendable, Decodable {
     struct Section: Hashable, Sendable, Decodable {
@@ -43,6 +52,10 @@ struct MusicTrack: Identifiable, Hashable, Sendable, Decodable {
     }
 
     func suits(_ style: StyleID) -> Bool { styles.contains(style.rawValue) }
+
+    var choice: SongChoice? {
+        url.map { SongChoice(id: id, title: title, url: $0, info: info, isCustom: false) }
+    }
 }
 
 enum MusicCatalog {
@@ -64,8 +77,8 @@ enum MusicCatalog {
         tracks.first { $0.id == id }
     }
 
-    /// The first song made for a style, else the default.
+    /// The first song made mainly for a style, else one that also suits it, else the default.
     static func suggestion(for style: StyleID) -> MusicTrack? {
-        tracks.first { $0.suits(style) } ?? defaultTrack
+        tracks.first { $0.styles.first == style.rawValue } ?? tracks.first { $0.suits(style) } ?? defaultTrack
     }
 }

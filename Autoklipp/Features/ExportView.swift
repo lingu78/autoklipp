@@ -102,7 +102,7 @@ struct ExportView: View {
         saved = false
         let edl = edl
         let media = draft.media
-        let track = draft.musicTrack
+        let song = draft.song
         let settings = RenderSettings(format: format, resolution: resolution)
         let folder = draft.storage.exportDirectory
         exportTask = Task {
@@ -111,7 +111,7 @@ struct ExportView: View {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 let url = folder.appending(path: "Autoklipp-\(Int(Date().timeIntervalSince1970)).mp4")
                 try await FinishNotifier.runAllowingBackground("Export") {
-                    let built = try await FilmGenerator.build(edl, media: media, track: track, settings: settings)
+                    let built = try await FilmGenerator.build(edl, media: media, song: song, settings: settings)
                     try await VideoExporter.export(built, resolution: settings.resolution, to: url) { value in
                         Task { @MainActor in progress = value }
                     }

@@ -23,9 +23,10 @@ struct GenerationInput: Sendable {
     var analyses: [String: MediaAnalysis] = [:]
     var targetDuration: Double
     var style: StyleID
-    var track: MusicTrack?
+    var song: SongChoice?
     var seed: UInt64
     var format: AspectFormat
+    var originalAudio = false
     var lockedClips: [EDLClip] = []
     var exclusions: [Exclusion] = []
 }
@@ -38,9 +39,10 @@ extension GenerationInput {
             analyses: draft.analyses,
             targetDuration: draft.targetDuration,
             style: draft.style,
-            track: draft.musicTrack,
+            song: draft.song,
             seed: draft.seed,
-            format: draft.format
+            format: draft.format,
+            originalAudio: draft.originalAudio
         )
     }
 }
@@ -58,8 +60,8 @@ enum FilmGenerator {
         let items = input.media.map(\.item)
         let target = input.targetDuration
         let music: MusicLayout
-        if let track = input.track {
-            music = MusicLayout.make(track: track.info, filmDuration: target)
+        if let song = input.song {
+            music = MusicLayout.make(track: song.info, filmDuration: target)
         } else {
             music = MusicLayout.metronome(bpm: 100, filmDuration: target)
         }
@@ -69,10 +71,11 @@ enum FilmGenerator {
             targetDuration: target,
             style: .preset(input.style),
             music: music,
-            musicTrackID: input.track?.id,
+            musicTrackID: input.song?.id,
             seed: input.seed,
             lockedClips: input.lockedClips,
-            exclusions: input.exclusions
+            exclusions: input.exclusions,
+            originalAudio: input.originalAudio
         )
         return Planner.plan(request)
     }
@@ -95,7 +98,7 @@ enum FilmGenerator {
 
         await onProgress(.rendering, 0)
         try Task.checkCancellation()
-        let built = try await build(edl, media: input.media, track: input.track, settings: settings)
+        let built = try await build(edl, media: input.media, song: input.song, settings: settings)
         return GenerationOutput(edl: edl, built: built, analyses: input.analyses)
     }
 
@@ -134,13 +137,13 @@ enum FilmGenerator {
         return analyses
     }
 
-    static func build(_ edl: EditDecisionList, media: [ImportedMedia], track: MusicTrack?, settings: RenderSettings) async throws
+    static func build(_ edl: EditDecisionList, media: [ImportedMedia], song: SongChoice?, settings: RenderSettings) async throws
         -> BuiltComposition
     {
         let inputs = RenderInputs(
             edl: edl,
             media: Dictionary(uniqueKeysWithValues: media.map { ($0.id, $0) }),
-            musicURL: track?.url,
+            musicURL: song?.url,
             settings: settings
         )
         return try await CompositionBuilder.build(inputs)

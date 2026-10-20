@@ -50,8 +50,11 @@ enum TestMedia {
         guard CGImageDestinationFinalize(destination) else { throw TestError.couldNotWrite }
     }
 
-    /// An H.264 movie with a moving square on a coloured background and a creation date.
-    static func writeVideo(to url: URL, duration: Double, width: Int, height: Int, color: RGB, date: Date?) async throws {
+    /// An H.264 movie with a moving square on a coloured background and a creation date;
+    /// with `toneLevel`, also a 440 Hz AAC sound track at that amplitude (0...1).
+    static func writeVideo(
+        to url: URL, duration: Double, width: Int, height: Int, color: RGB, date: Date?, toneLevel: Float? = nil
+    ) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(
             mediaType: .video,
@@ -67,6 +70,19 @@ enum TestMedia {
             ]
         )
         writer.add(input)
+        var soundInput: AVAssetWriterInput?
+        if toneLevel != nil {
+            let sound = AVAssetWriterInput(
+                mediaType: .audio,
+                outputSettings: [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1,
+                    AVEncoderBitRateKey: 64_000,
+                ]
+            )
+            sound.expectsMediaDataInRealTime = false
+            writer.add(sound)
+            soundInput = sound
+        }
         if let date {
             let item = AVMutableMetadataItem()
             item.identifier = .quickTimeMetadataCreationDate
@@ -75,8 +91,11 @@ enum TestMedia {
         }
         guard writer.startWriting() else { throw writer.error ?? TestError.couldNotWrite }
         writer.startSession(atSourceTime: .zero)
+        let tone = try soundInput.map { try ToneWriter(input: $0, level: toneLevel ?? 0.5) }
         let frames = Int(duration * 30)
         for frame in 0..<frames {
+            // Keep the sound a little ahead of the pictures so the writer can interleave.
+            try await tone?.append(until: min(duration, Double(frame) / 30 + 0.5))
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
             guard let pool = adaptor.pixelBufferPool else { throw TestError.couldNotWrite }
             var buffer: CVPixelBuffer?
@@ -94,6 +113,8 @@ enum TestMedia {
             adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 30))
         }
         input.markAsFinished()
+        try await tone?.append(until: duration)
+        soundInput?.markAsFinished()
         await writer.finishWriting()
         guard writer.status == .completed else { throw writer.error ?? TestError.couldNotWrite }
     }
@@ -164,5 +185,59 @@ enum TestMedia {
 
     enum TestError: Error {
         case couldNotWrite
+    }
+}
+
+/// Writes a sine tone as 1024-sample PCM buffers; the writer encodes them to AAC.
+final class ToneWriter {
+    let input: AVAssetWriterInput
+    let level: Float
+    let format: CMAudioFormatDescription
+    let rate = 44_100
+    var position = 0
+
+    init(input: AVAssetWriterInput, level: Float) throws {
+        self.input = input
+        self.level = level
+        var description = AudioStreamBasicDescription(
+            mSampleRate: 44_100, mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, mBytesPerPacket: 4, mFramesPerPacket: 1,
+            mBytesPerFrame: 4, mChannelsPerFrame: 1, mBitsPerChannel: 32, mReserved: 0
+        )
+        var format: CMAudioFormatDescription?
+        CMAudioFormatDescriptionCreate(
+            allocator: nil, asbd: &description, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil,
+            extensions: nil, formatDescriptionOut: &format
+        )
+        guard let format else { throw TestMedia.TestError.couldNotWrite }
+        self.format = format
+    }
+
+    func append(until seconds: Double) async throws {
+        let total = Int(seconds * Double(rate))
+        while position < total {
+            let count = min(1024, total - position)
+            var samples = (0..<count).map { level * sin(2 * Float.pi * 440 * Float(position + $0) / Float(rate)) }
+            let bytes = count * 4
+            var block: CMBlockBuffer?
+            CMBlockBufferCreateWithMemoryBlock(
+                allocator: nil, memoryBlock: nil, blockLength: bytes, blockAllocator: nil, customBlockSource: nil,
+                offsetToData: 0, dataLength: bytes, flags: 0, blockBufferOut: &block
+            )
+            guard let block else { throw TestMedia.TestError.couldNotWrite }
+            samples.withUnsafeMutableBytes { raw in
+                _ = CMBlockBufferReplaceDataBytes(with: raw.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: bytes)
+            }
+            var sample: CMSampleBuffer?
+            CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+                allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: count,
+                presentationTimeStamp: CMTime(value: CMTimeValue(position), timescale: CMTimeScale(rate)),
+                packetDescriptions: nil, sampleBufferOut: &sample
+            )
+            guard let sample else { throw TestMedia.TestError.couldNotWrite }
+            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            input.append(sample)
+            position += count
+        }
     }
 }

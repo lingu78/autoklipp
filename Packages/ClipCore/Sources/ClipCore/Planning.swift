@@ -150,6 +150,8 @@ struct PlanningEngine {
         /// Per segment; negative marks a range the user removed.
         var segmentScores: [Double]
         var segmentSignatures: [[Float]?]
+        /// Analysed loudness per segment, when known.
+        var segmentAudio: [Double?]
         var stillScore: Double
         var stillSignature: [Float]?
         var faces: [NormalizedRect]
@@ -281,7 +283,7 @@ struct PlanningEngine {
         for (order, item) in items.enumerated() {
             let analysis = request.analyses[item.id]
             var source = Source(
-                order: order, item: item, segmentScores: [], segmentSignatures: [],
+                order: order, item: item, segmentScores: [], segmentSignatures: [], segmentAudio: [],
                 stillScore: neutralStill, stillSignature: analysis?.stillSignature,
                 faces: analysis?.faceRegions ?? [], quality: 0, usableDuration: 0,
                 isSecondary: secondary.contains(item.id)
@@ -301,6 +303,7 @@ struct PlanningEngine {
                 let removed = request.exclusions.filter { $0.mediaID == item.id && $0.start != nil && $0.end != nil }
                 var scores: [Double] = []
                 var signatures: [[Float]?] = []
+                var audio: [Double?] = []
                 for index in 0..<count {
                     let start = Double(index) * Timing.segmentLength
                     let end = min(item.duration, start + Timing.segmentLength)
@@ -310,9 +313,11 @@ struct PlanningEngine {
                     if removed.contains(where: { start < ($0.end ?? 0) && end > ($0.start ?? 0) }) { score = -1 }
                     scores.append(score)
                     signatures.append(segment?.signature)
+                    audio.append(segment?.metrics.audioLevel)
                 }
                 source.segmentScores = scores
                 source.segmentSignatures = signatures
+                source.segmentAudio = audio
                 let usable = scores.filter { $0 >= 0 }
                 source.usableDuration = min(item.duration, Double(usable.count) * Timing.segmentLength)
                 let best = usable.sorted(by: >).prefix(max(1, usable.count / 2))
@@ -834,7 +839,7 @@ struct PlanningEngine {
                     kenBurns: source.isStill ? kenBurns(for: source) : nil,
                     isLocked: slot.moment.locked != nil,
                     score: score,
-                    audioVolume: request.originalAudio && item.hasAudio ? 1 : 0
+                    audioVolume: originalSoundVolume(source, start: sourceStart, length: sourceDuration, duration: duration)
                 )
             )
         }
@@ -869,6 +874,19 @@ struct PlanningEngine {
             clips: clips,
             notices: notices
         )
+    }
+
+    /// Level of a video clip's own sound: none unless asked for, lower when the footage is
+    /// quiet (so it does not duck the music), and muted when slowed down.
+    func originalSoundVolume(_ source: Source, start: Double, length: Double, duration: Double) -> Double {
+        guard request.originalAudio, source.item.kind == .video, source.item.hasAudio else { return 0 }
+        guard duration > 0, length / duration > 0.95 else { return 0 }
+        let first = max(0, Int(start / Timing.segmentLength))
+        let last = min(source.segmentAudio.count, Int(((start + length) / Timing.segmentLength).rounded(.up)))
+        let levels = first < last ? source.segmentAudio[first..<last].compactMap { $0 } : []
+        guard !levels.isEmpty else { return AudioMixPlan.loudClipVolume }
+        let mean = levels.reduce(0, +) / Double(levels.count)
+        return mean >= AudioMixPlan.loudnessForDucking ? AudioMixPlan.loudClipVolume : AudioMixPlan.quietClipVolume
     }
 
     /// A gentle zoom or pan; aims at faces when the analysis found any.

@@ -11,6 +11,26 @@
         }
       }
     },
+    "%lld BPM · own file": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld BPM · egen fil"
+          }
+        }
+      }
+    },
+    "%lld BPM · suits the style": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld BPM · passar stilen"
+          }
+        }
+      }
+    },
     "%lld clips": {
       "localizations": {
         "en": {
@@ -411,6 +431,16 @@
         }
       }
     },
+    "Finding the beat…": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Letar efter takten…"
+          }
+        }
+      }
+    },
     "Format": {
       "localizations": {
         "sv": {
@@ -521,6 +551,16 @@
         }
       }
     },
+    "No steady beat was found in that song. Try another one.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen jämn takt hittades i låten. Prova en annan."
+          }
+        }
+      }
+    },
     "None of the chosen photos or videos could be used.": {
       "localizations": {
         "sv": {
@@ -581,12 +621,12 @@
         }
       }
     },
-    "Play preview of %@": {
+    "Play preview": {
       "localizations": {
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spela upp en provlyssning av %@"
+            "value": "Provlyssna"
           }
         }
       }
@@ -651,6 +691,16 @@
         }
       }
     },
+    "Sound from the videos": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ljud från filmerna"
+          }
+        }
+      }
+    },
     "Start over": {
       "localizations": {
         "sv": {
@@ -691,6 +741,26 @@
         }
       }
     },
+    "That file could not be read. Songs bought in Apple Music are protected and cannot be used.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filen gick inte att läsa. Låtar från Apple Music är skyddade och kan inte användas."
+          }
+        }
+      }
+    },
+    "The music is lowered while people talk or cheer.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Musiken sänks när någon pratar eller jublar."
+          }
+        }
+      }
+    },
     "There was only enough material for %@ of the %@ you asked for.": {
       "localizations": {
         "sv": {
@@ -717,6 +787,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lugnt tempo, mörka toningar och biofärger."
+          }
+        }
+      }
+    },
+    "Use your own audio file…": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Använd en egen ljudfil…"
           }
         }
       }

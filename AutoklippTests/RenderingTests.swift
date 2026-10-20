@@ -95,13 +95,13 @@ struct RenderingTests {
         let folder = try TestMedia.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
         let media = try await TestMedia.mixedSet(count: 4, in: folder)
-        let track = try #require(MusicCatalog.defaultTrack)
+        let song = try #require(MusicCatalog.defaultTrack?.choice)
         // Asking for far more than the material allows gives a shorter film with a notice.
-        let input = GenerationInput(media: media, targetDuration: 120, style: .calm, track: track, seed: 1, format: .square)
+        let input = GenerationInput(media: media, targetDuration: 120, style: .calm, song: song, seed: 1, format: .square)
         let edl = FilmGenerator.plan(input)
         #expect(edl.duration < 100)
         #expect(!edl.notices.isEmpty)
-        let built = try await FilmGenerator.build(edl, media: media, track: track, settings: .preview(.square))
+        let built = try await FilmGenerator.build(edl, media: media, song: song, settings: .preview(.square))
         let duration = try await built.composition.load(.duration).seconds
         #expect(abs(duration - edl.duration) < 0.05, "composition \(duration) vs list \(edl.duration)")
     }

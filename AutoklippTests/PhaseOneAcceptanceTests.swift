@@ -18,8 +18,8 @@ struct PhaseOneAcceptanceTests {
         #expect(media.filter { $0.item.kind == .video }.count == 10)
         #expect(media.allSatisfy { $0.item.creationDate != nil })
 
-        let track = try #require(MusicCatalog.defaultTrack, "the bundled song is missing")
-        let input = GenerationInput(media: media, targetDuration: 60, style: .travel, track: track, seed: 42, format: .portrait)
+        let song = try #require(MusicCatalog.defaultTrack?.choice, "the bundled song is missing")
+        let input = GenerationInput(media: media, targetDuration: 60, style: .travel, song: song, seed: 42, format: .portrait)
         let edl = FilmGenerator.plan(input)
         #expect(abs(edl.duration - 60) <= Timing.lengthTolerance)
         #expect(Set(edl.clips.map(\.mediaID)).count == 20, "every clip should be used")
@@ -30,7 +30,7 @@ struct PhaseOneAcceptanceTests {
         #expect(order == order.sorted())
 
         let settings = RenderSettings(format: .portrait, resolution: .hd1080)
-        let built = try await FilmGenerator.build(edl, media: media, track: track, settings: settings)
+        let built = try await FilmGenerator.build(edl, media: media, song: song, settings: settings)
         let url = folder.appending(path: "film.mp4")
         try await VideoExporter.export(built, resolution: .hd1080, to: url) { _ in }
 
