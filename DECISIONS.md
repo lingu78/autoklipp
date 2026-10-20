@@ -82,6 +82,40 @@ Format: **Beslut** – motivering – (datum, fas).
   klipplängd"-variant: utan analys får alla segment samma neutrala poäng, och stilen ger
   jämna klipplängder (t.ex. Resa: 2 s vid 120 BPM). (2026-10-20, fas 1)
 
+## 4b. Analys (fas 2)
+
+- **Analysen körs på enheten med Vision och Accelerate, på små proxyrutor** (filmrutor med långsidan
+  512 px via `AVAssetImageGenerator`, stillbilder 1024 px). Hela filmer läses aldrig in i minnet.
+  En ruta per 0,5 s-segment. (2026-10-20, fas 2)
+- **Skärpa = Laplace-energi relativt bildens kontrast** (`vDSP_imgfir`). Att dela med kontrasten gör
+  att en skarp men jämn bild (himmel, snö) inte tas för suddig. Kalibrerad med syntetiska bilder med
+  naturlig 1/f-struktur: skarpa ger 0,65–0,95, Gaussisk oskärpa σ ≥ 4 px (1080p) ger under 0,25,
+  som är gränsen för "suddig". (2026-10-20, fas 2)
+- **Kameraskak = hur mycket kamerans förflyttning mellan två segment skiljer sig från grannarnas**
+  (Vision `TrackTranslationalImageRegistrationRequest`). En jämn panorering flyttar lika mycket varje
+  gång och räknas inte som skak; handhållet skak byter riktning. Rörelse i bilden = skillnaden mellan
+  rutorna efter att kamerans förflyttning kompenserats. (2026-10-20, fas 2)
+- **Ansikten med kvalitetsvärde** (Vision `DetectFaceCaptureQualityRequest`), en gång per sekund för
+  film. Ansiktenas lägen sparas för stillbilder så att Ken Burns-rörelsen siktar mot dem.
+  (2026-10-20, fas 2)
+- **Estetiskt värde för stillbilder** (Vision `CalculateImageAestheticsScoresRequest`); bilder som
+  Vision klassar som "nyttobilder" (kvitton, skärmdumpar) får lågt värde. (2026-10-20, fas 2)
+- **Ljudnivå per segment** (RMS via `AVAssetReader`, −50 dBFS → 0, −10 dBFS → 1). Används för
+  poängen och, från fas 3, för att avgöra när musiken ska tonas ned. (2026-10-20, fas 2)
+- **Etiketter** (Vision `ClassifyImageRequest`) sparas per objekt för AI-regissören i fas 5.
+  (2026-10-20, fas 2)
+- **Nästan identiska bilder** känns igen på en 4×4-färglayout (48 värden) per bild/segment; två
+  sådana i rad undviks (den sämre tas bort). Visions feature prints hade varit mer semantiska men
+  kräver Apple-ramverk i ClipCore, som ska gå att testa utan dem. (2026-10-20, fas 2)
+- **Analysen sparas i projektet och återanvänds** när användaren genererar om, byter stil eller
+  musik. Ett objekt som inte går att analysera får neutrala värden i stället för att stoppa filmen.
+  (2026-10-20, fas 2)
+- **Acceptanstest:** en syntetisk film med skarpa, suddiga, skakiga och panorerande partier
+  analyseras i simulatorn och urvalet får inte hamna i de suddiga eller skakiga sekunderna.
+  Ansiktsprioriteringen testas dels i ClipCore med injicerade ansiktsvärden, dels i CI med ett
+  porträtt i public domain som runnern laddar ned (utvecklingsmiljön når inte Wikimedia); finns
+  bilden inte hoppas just den delen över. (2026-10-20, fas 2)
+
 ## 5. Rendering
 
 - **Egen kompositör (`AVVideoCompositing`) som ritar varje bildruta med Core Image.** Det ger full

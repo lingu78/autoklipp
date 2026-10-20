@@ -4,6 +4,7 @@ import SwiftUI
 struct GenerateView: View {
     @Environment(AppModel.self) private var model
     @State private var step: GenerationStep = .analysing
+    @State private var fraction = 0.0
     @State private var errorMessage: String?
 
     var body: some View {
@@ -16,8 +17,13 @@ struct GenerateView: View {
                 Button("Back") { goBack() }
                     .buttonStyle(.borderedProminent)
             } else {
-                ProgressView()
-                    .controlSize(.large)
+                if step == .analysing, fraction > 0 {
+                    ProgressView(value: fraction)
+                        .frame(maxWidth: 240)
+                } else {
+                    ProgressView()
+                        .controlSize(.large)
+                }
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(GenerationStep.allCases, id: \.self) { item in
                         HStack(spacing: 12) {
@@ -56,10 +62,14 @@ struct GenerateView: View {
         let input = GenerationInput(draft: draft)
         let settings = RenderSettings.preview(draft.format)
         do {
-            let output = try await FilmGenerator.generate(input, settings: settings) { newStep in
-                await MainActor.run { step = newStep }
+            let output = try await FilmGenerator.generate(input, settings: settings) { newStep, newFraction in
+                await MainActor.run {
+                    step = newStep
+                    fraction = newFraction
+                }
             }
             try Task.checkCancellation()
+            draft.analyses.merge(output.analyses) { _, new in new }
             draft.edl = output.edl
             model.preview?.player.pause()
             model.preview = PreviewSession(edl: output.edl, built: output.built)

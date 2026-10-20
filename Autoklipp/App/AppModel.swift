@@ -51,6 +51,8 @@ final class ProjectDraft {
     let id = UUID()
     let storage: ProjectStorage
     var media: [ImportedMedia] = []
+    /// Vision/Accelerate analysis per media id, computed once and reused for every version.
+    var analyses: [String: MediaAnalysis] = [:]
     /// Items that could not be read and were skipped.
     var skippedCount = 0
     var lengthChoice: LengthChoice = .preset(60)

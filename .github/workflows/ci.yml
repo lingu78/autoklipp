@@ -53,9 +53,20 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+      - name: Fetch a public-domain portrait for the face test
+        # Official portraits in the public domain on Wikimedia Commons. If none can be fetched,
+        # the face part of the analysis tests is skipped.
+        run: |
+          for name in Abraham_Lincoln_O-77_matte_collodion_print.jpg Neil_Armstrong_pose.jpg; do
+            if curl -fsSL -A "AutoklippCI/1.0 (https://github.com/lingu78/autoklipp)" \
+                "https://commons.wikimedia.org/wiki/Special:FilePath/$name?width=600" -o "$RUNNER_TEMP/portrait.jpg"; then
+              file "$RUNNER_TEMP/portrait.jpg" && break
+            fi
+          done || true
       - name: Build and test
         env:
           TEST_RUNNER_AUTOKLIPP_CI: "1"
+          TEST_RUNNER_AUTOKLIPP_FACE_IMAGE: ${{ runner.temp }}/portrait.jpg
         run: |
           set +e
           xcodebuild test \
