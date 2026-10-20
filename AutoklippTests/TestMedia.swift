@@ -53,12 +53,13 @@ enum TestMedia {
     /// An H.264 movie with a moving square on a coloured background and a creation date;
     /// with `toneLevel`, also a 440 Hz AAC sound track at that amplitude (0...1).
     static func writeVideo(
-        to url: URL, duration: Double, width: Int, height: Int, color: RGB, date: Date?, toneLevel: Float? = nil
+        to url: URL, duration: Double, width: Int, height: Int, color: RGB, date: Date?, toneLevel: Float? = nil,
+        codec: AVVideoCodecType = .h264
     ) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(
             mediaType: .video,
-            outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height]
+            outputSettings: [AVVideoCodecKey: codec, AVVideoWidthKey: width, AVVideoHeightKey: height]
         )
         input.expectsMediaDataInRealTime = false
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(

@@ -156,7 +156,7 @@ enum MediaAnalyzer {
     static func detectFaces(in image: CGImage) async -> [DetectedFace] {
         guard let faces = try? await DetectFaceCaptureQualityRequest().perform(on: image, orientation: nil) else { return [] }
         return faces.map { face in
-            let box = face.boundingBox
+            let box = face.boundingBox.cgRect
             // Vision's origin is bottom left.
             let rect = ClipCore.NormalizedRect(
                 x: Double(box.origin.x), y: Double(1 - box.origin.y - box.height),
