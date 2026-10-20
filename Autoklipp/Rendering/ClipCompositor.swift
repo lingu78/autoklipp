@@ -33,12 +33,18 @@ final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let cancelLock = NSLock()
     private var cancelling = false
 
+    /// Buffers shared with the GPU (IOSurface, Metal), so Core Image reads and writes them in
+    /// place instead of copying every frame through the CPU.
     let sourcePixelBufferAttributes: [String: any Sendable]? = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
+        kCVPixelBufferMetalCompatibilityKey as String: true,
     ]
 
     let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
+        kCVPixelBufferMetalCompatibilityKey as String: true,
     ]
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}

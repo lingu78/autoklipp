@@ -89,7 +89,6 @@ jobs:
             -scheme Autoklipp \
             -destination "id=$UDID" \
             -parallel-testing-enabled NO \
-            -skip-testing:AutoklippTests/PhaseOneAcceptanceTests \
             -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
           status=$?
           grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400

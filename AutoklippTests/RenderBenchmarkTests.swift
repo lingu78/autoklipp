@@ -32,6 +32,26 @@ struct RenderBenchmarkTests {
         let frames = edl.duration * 30
         Self.log("film: \(edl.duration) s, \(Int(frames)) frames")
 
+        // 0. Drawing alone, into a plain pixel buffer and into a GPU-shareable one.
+        if let renderer = (built.videoComposition.instructions.first as? ClipInstruction)?.renderer {
+            let context = CIContext(options: [.cacheIntermediates: false])
+            let shared: [String: Any] = [
+                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
+                kCVPixelBufferMetalCompatibilityKey as String: true,
+            ]
+            for (label, attributes) in [("plain buffer", [String: Any]()), ("IOSurface buffer", shared)] {
+                var buffer: CVPixelBuffer?
+                CVPixelBufferCreate(nil, 1080, 1920, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &buffer)
+                guard let buffer else { continue }
+                await Self.time("draw into a \(label)", frames: 30) {
+                    for frame in 0..<30 {
+                        let image = renderer.image(at: Double(frame) / 30 + 0.5) { _ in nil }
+                        context.render(image, to: buffer, bounds: CGRect(x: 0, y: 0, width: 1080, height: 1920), colorSpace: CGColorSpace(name: CGColorSpace.itur_709))
+                    }
+                }
+            }
+        }
+
         // 1. Decoding and drawing only, through the compositor (no encoding).
         await Self.time("read through the compositor", frames: frames) {
             let reader = try AVAssetReader(asset: built.composition)
