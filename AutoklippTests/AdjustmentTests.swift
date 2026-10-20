@@ -11,10 +11,12 @@ import Testing
 @Suite("Phase 4 – clip strip, regeneration and projects", .serialized)
 @MainActor
 struct AdjustmentTests {
-    /// A model with a generated 60 s film of 20 mixed clips in its preview.
-    func preparedModel(folder: URL) async throws -> AppModel {
+    /// A model with a generated 60 s film of 20 mixed clips in its preview. The media lie in the
+    /// project's own folder, where the app copies imported media.
+    func preparedModel() async throws -> AppModel {
         let model = AppModel(inMemory: true)
-        let media = try await TestMedia.mixedSet(count: 20, in: folder)
+        try model.draft.storage.prepare()
+        let media = try await TestMedia.mixedSet(count: 20, in: model.draft.storage.mediaDirectory)
         model.draft.media = media
         model.draft.lengthChoice = .preset(60)
         model.draft.seed = 21
@@ -28,9 +30,9 @@ struct AdjustmentTests {
 
     @Test(.timeLimit(.minutes(10)))
     func stripEditsGiveANewPreviewWithinThreeSeconds() async throws {
-        let folder = try TestMedia.makeFolder()
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let model = try await preparedModel(folder: folder)
+        let model = try await preparedModel()
+        let storage = model.draft.storage
+        defer { storage.removeAll() }
         let session = try #require(model.preview)
         let original = session.edl
 
@@ -76,9 +78,9 @@ struct AdjustmentTests {
 
     @Test(.timeLimit(.minutes(10)))
     func projectsCanBeReopened() async throws {
-        let folder = try TestMedia.makeFolder()
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let model = try await preparedModel(folder: folder)
+        let model = try await preparedModel()
+        let storage = model.draft.storage
+        defer { storage.removeAll() }
         model.draft.select(style: .nostalgic)
         model.draft.title = "Midsommar"
         model.draft.exclusions = [Exclusion(mediaID: "item-3")]
@@ -121,17 +123,17 @@ struct AdjustmentTests {
             renderSize: CGSize(width: 360, height: 640), duration: 10, layers: [layer],
             title: TextCard(text: "MMMMMMMM"), endCredit: TextCard(text: "SLUT")
         ))
-        func brightness(_ image: CIImage) -> Double {
-            let average = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: image.extent)])
-            var pixel = [UInt8](repeating: 0, count: 4)
-            CIContext().render(average, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-                               format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
-            return Double(Int(pixel[0]) + Int(pixel[1]) + Int(pixel[2])) / (3 * 255)
-        }
         let none: (CMPersistentTrackID) -> CVPixelBuffer? = { _ in nil }
-        #expect(brightness(titled.image(at: 1.5, sourceFrame: none)) > brightness(plain.image(at: 1.5, sourceFrame: none)) + 0.005)
-        #expect(abs(brightness(titled.image(at: 5, sourceFrame: none)) - brightness(plain.image(at: 5, sourceFrame: none))) < 0.002)
-        #expect(brightness(titled.image(at: 8.5, sourceFrame: none)) > brightness(plain.image(at: 8.5, sourceFrame: none)) + 0.002)
+        func gain(at time: Double) -> Double {
+            let base = TestMedia.brightness(plain.image(at: time, sourceFrame: none))
+            let text = TestMedia.brightness(titled.image(at: time, sourceFrame: none))
+            print("text at \(time) s: brightness \(base) → \(text)")
+            #expect(base > 0.05, "the dark still itself is drawn")
+            return text - base
+        }
+        #expect(gain(at: 1.5) > 0.005)
+        #expect(abs(gain(at: 5)) < 0.002)
+        #expect(gain(at: 8.5) > 0.002)
         #expect(abs(FrameRenderer.fade(0.45, from: 0.2, to: 3.2) - 0.5) < 1e-9)
     }
 }

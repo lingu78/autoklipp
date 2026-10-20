@@ -28,17 +28,20 @@ struct RhythmTests {
         let url = try #require(track.url)
         let envelope = try await AudioAnalyzer.analyse(url: url)
         let result = try #require(BeatTracker.track(envelope: envelope.onset, frameRate: envelope.frameRate, timeOffset: envelope.timeOffset))
-        let truth = track.info.beats.filter { $0 > 3 && $0 < track.loopEnd - 3 }
-        let errors = truth.map { beat in result.beats.map { $0 - beat }.min { abs($0) < abs($1) } ?? .infinity }
-        let hits = errors.filter { abs($0) <= Self.tolerance }
-        let sortedErrors = hits.sorted()
+        // Cuts go on detected beats, so each detected beat must be on a real one.
+        let detected = result.beats.filter { $0 > 3 && $0 < track.loopEnd - 3 }
+        let errors = detected.map { beat in track.info.beats.map { beat - $0 }.min { abs($0) < abs($1) } ?? .infinity }
+        let onBeat = errors.filter { abs($0) <= Self.tolerance }
+        let precision = Double(onBeat.count) / Double(max(1, detected.count))
+        let sortedErrors = onBeat.sorted()
         let median = sortedErrors.isEmpty ? .infinity : sortedErrors[sortedErrors.count / 2]
-        print("\(id): \(result.bpm) BPM detected (true \(track.bpm)), \(hits.count)/\(truth.count) beats within 50 ms, median offset \(median * 1000) ms")
-        #expect(Double(hits.count) / Double(truth.count) > 0.9)
+        print("\(id): \(result.bpm) BPM detected (true \(track.bpm)), \(onBeat.count)/\(detected.count) beats within 50 ms, median offset \(median * 1000) ms")
+        #expect(precision > 0.9)
         // Decoding adds no delay (AAC priming is handled), so beats are not systematically late.
         #expect(abs(median) < 0.02)
+        // The true tempo, or half of it; double would put every other cut between beats.
         let ratio = result.bpm / track.bpm
-        #expect([0.5, 1, 2].contains { abs(ratio - $0) < 0.03 }, "tempo \(result.bpm) for \(track.bpm)")
+        #expect([0.5, 1].contains { abs(ratio - $0) < 0.03 }, "tempo \(result.bpm) for \(track.bpm)")
     }
 
     @Test(arguments: StyleID.allCases)

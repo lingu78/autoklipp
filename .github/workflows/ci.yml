@@ -23,7 +23,7 @@ jobs:
   ios:
     name: iOS app (simulator)
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       XCODE: /Applications/Xcode_26.6.app
       SIMULATOR: iPhone 17
@@ -83,10 +83,12 @@ jobs:
           TEST_RUNNER_AUTOKLIPP_FACE_IMAGE: ${{ runner.temp }}/portrait.jpg
         run: |
           set +e
+          # One test at a time: the runner has three cores and the export tests are heavy.
           xcodebuild test-without-building \
             -project Autoklipp.xcodeproj \
             -scheme Autoklipp \
             -destination "id=$UDID" \
+            -parallel-testing-enabled NO \
             -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
           status=$?
           grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400

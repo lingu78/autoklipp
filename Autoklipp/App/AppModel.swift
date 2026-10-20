@@ -35,6 +35,10 @@ final class AppModel {
 
     init(inMemory: Bool = false) {
         draft = ProjectDraft()
+        // The store lives in Application Support, which does not exist on a fresh install.
+        if !inMemory {
+            try? FileManager.default.createDirectory(at: .applicationSupportDirectory, withIntermediateDirectories: true)
+        }
         let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
         if let container = try? ModelContainer(for: SavedProject.self, configurations: configuration) {
             self.container = container

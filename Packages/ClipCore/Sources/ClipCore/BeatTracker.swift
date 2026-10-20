@@ -5,10 +5,20 @@ import Foundation
 /// The envelope (how much new sound starts in each short frame, e.g. spectral flux) is computed
 /// by the app with Accelerate; this part is plain Swift so it can be tested anywhere.
 ///
-/// Tempo comes from the autocorrelation of the envelope, weighted gently towards ~110 BPM and
+/// Tempo comes from the autocorrelation of the envelope, weighted towards ~120 BPM and
 /// rewarding periods whose multiples also repeat. Beats are then placed by dynamic programming
 /// (Ellis 2007): every beat should sit on a strong onset, one period after the previous beat.
+///
+/// Off-beat hi-hats and bass can make the tracker follow eighth notes at double tempo. Then
+/// every other beat is clearly weaker, and only the stronger half is kept. Halving a correct
+/// tempo still leaves every beat on a real beat, so the check errs on the safe side.
 public enum BeatTracker {
+    /// Centre and width (in octaves) of the tempo preference.
+    static let preferredBPM = 120.0
+    static let preferenceOctaves = 1.0
+    /// Relative strength difference between alternate beats that means eighth notes were tracked.
+    static let alternationLimit = 0.12
+
     public struct Result: Sendable, Hashable {
         public var bpm: Double
         /// Beat times in seconds, ascending.
@@ -31,7 +41,11 @@ public enum BeatTracker {
         guard frameRate > 0, envelope.count > Int(frameRate * 4) else { return nil }
         let onset = normalised(envelope, frameRate: frameRate)
         guard let period = estimatePeriod(onset, frameRate: frameRate, tempoRange: tempoRange) else { return nil }
-        let frames = trackBeats(onset, period: period, tightness: tightness)
+        var frames = trackBeats(onset, period: period, tightness: tightness)
+        // Halve only where the result stays within the tempo range.
+        if 60 * frameRate / period >= 2 * tempoRange.lowerBound {
+            frames = strongerHalf(onset, frames: frames, period: period)
+        }
         guard frames.count >= 4 else { return nil }
         let beats = frames.map { timeOffset + $0 / frameRate }
         let gaps = zip(beats.dropFirst(), beats).map { $0 - $1 }.sorted()
@@ -82,7 +96,7 @@ public enum BeatTracker {
         var scores: [(lag: Int, score: Double)] = []
         for lag in minLag...maxLag {
             let bpm = 60 * frameRate / Double(lag)
-            let octaves = log2(bpm / 110) / 1.3
+            let octaves = log2(bpm / preferredBPM) / preferenceOctaves
             let prior = exp(-0.5 * octaves * octaves)
             let periodic = ac(lag) + 0.5 * ac(2 * lag) + 0.25 * ac(3 * lag)
             scores.append((lag, prior * periodic))
@@ -153,6 +167,33 @@ public enum BeatTracker {
             guard abs(denominator) > 1e-12 else { return Double(peak) }
             return Double(peak) + min(0.5, max(-0.5, 0.5 * (previous - next) / denominator))
         }
+    }
+
+    /// Keeps every other beat when alternate beats differ clearly in strength (beats against
+    /// off-beats), choosing the stronger set. Beats are counted in periods, so a skipped beat
+    /// does not swap the sets.
+    static func strongerHalf(_ onset: [Double], frames: [Double], period: Double) -> [Double] {
+        guard frames.count >= 8, !onset.isEmpty else { return frames }
+        func strength(_ frame: Double) -> Double {
+            let centre = min(onset.count - 1, max(0, Int(frame.rounded())))
+            return onset[max(0, centre - 1)...min(onset.count - 1, centre + 1)].max() ?? 0
+        }
+        var counts = [0]
+        for (previous, next) in zip(frames, frames.dropFirst()) {
+            counts.append(counts[counts.count - 1] + max(1, Int(((next - previous) / period).rounded())))
+        }
+        var sums = [0.0, 0.0]
+        var totals = [0, 0]
+        for (frame, count) in zip(frames, counts) {
+            sums[count % 2] += strength(frame)
+            totals[count % 2] += 1
+        }
+        guard totals[0] > 0, totals[1] > 0 else { return frames }
+        let even = sums[0] / Double(totals[0])
+        let odd = sums[1] / Double(totals[1])
+        guard even + odd > 0, abs(even - odd) / (even + odd) > alternationLimit else { return frames }
+        let kept = even > odd ? 0 : 1
+        return zip(frames, counts).filter { $0.1 % 2 == kept }.map(\.0)
     }
 
     /// Song sections from loudness: bars are grouped in eights and each group gets its relative

@@ -10,7 +10,7 @@ import Testing
 /// Phase 1 acceptance: "A 1-minute film of 20 mixed clips is exported to Photos, length 60 s ±1 s."
 @Suite("Phase 1 acceptance", .serialized)
 struct PhaseOneAcceptanceTests {
-    @Test(.timeLimit(.minutes(20)))
+    @Test(.timeLimit(.minutes(30)))
     func oneMinuteFilmOfTwentyMixedClipsExportsToPhotos() async throws {
         let folder = try TestMedia.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -32,7 +32,8 @@ struct PhaseOneAcceptanceTests {
         let settings = RenderSettings(format: .portrait, resolution: .hd1080)
         let built = try await FilmGenerator.build(edl, media: media, song: song, settings: settings)
         let url = folder.appending(path: "film.mp4")
-        try await VideoExporter.export(built, resolution: .hd1080, to: url) { _ in }
+        let log = ProgressLog("export")
+        try await VideoExporter.export(built, resolution: .hd1080, to: url) { log.report($0) }
 
         let film = AVURLAsset(url: url)
         let duration = try await film.load(.duration).seconds
@@ -48,7 +49,9 @@ struct PhaseOneAcceptanceTests {
         generator.requestedTimeToleranceAfter = .zero
         for seconds in [1.0, 20.0, 45.0] {
             let frame = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
-            #expect(averageBrightness(of: frame) > 0.15, "frame at \(seconds) s is too dark")
+            let brightness = TestMedia.brightness(frame)
+            print("frame at \(seconds) s: brightness \(brightness)")
+            #expect(brightness > 0.15, "frame at \(seconds) s is too dark")
         }
 
         // Saving to Photos. CI grants add-only access before the run and sets AUTOKLIPP_CI.
@@ -58,20 +61,5 @@ struct PhaseOneAcceptanceTests {
         } else {
             print("Skipping the Photos step: add-only access has not been granted on this simulator.")
         }
-    }
-
-    private func averageBrightness(of image: CGImage) -> Double {
-        let context = CIContext()
-        let input = CIImage(cgImage: image)
-        guard let average = CIFilter(
-            name: "CIAreaAverage",
-            parameters: [kCIInputImageKey: input, kCIInputExtentKey: CIVector(cgRect: input.extent)]
-        )?.outputImage else { return 0 }
-        var pixel = [UInt8](repeating: 0, count: 4)
-        context.render(
-            average, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB()
-        )
-        return (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / (3 * 255)
     }
 }

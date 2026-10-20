@@ -1,5 +1,6 @@
 import ClipCore
 import Foundation
+import FoundationModels
 import Testing
 
 @testable import Autoklipp
@@ -69,6 +70,23 @@ struct DirectorAppTests {
         #expect(plan?.title == "Barnen i sommar")
     }
 
+    /// With a description the film is always made: without the model, when it fails, or with
+    /// its plan.
+    @Test(.timeLimit(.minutes(5)))
+    func aDescriptionNeverStopsTheFilm() async throws {
+        let (media, analyses) = Self.material()
+        var input = GenerationInput(
+            media: media, analyses: analyses, targetDuration: 20, style: .travel,
+            song: MusicCatalog.track(id: "morgondimma")?.choice, seed: 2, format: .portrait
+        )
+        input.instruction = "bara bilder med barnen"
+        let output = try await FilmGenerator.generate(input, settings: .preview(.portrait)) { _, _ in }
+        print("director plan: \(output.directorPlan != nil), failed: \(output.directorFailed)")
+        #expect(abs(output.edl.duration - 20) <= Timing.lengthTolerance)
+        #expect(!output.edl.clips.isEmpty)
+        #expect(output.directorFailed == (output.directorPlan == nil))
+    }
+
     /// Runs only where Apple Intelligence is available (a device or a Mac that has it).
     @Test(.timeLimit(.minutes(5)))
     func theModelPicksChildrenWhenAskedTo() async throws {
@@ -77,9 +95,19 @@ struct DirectorAppTests {
             return
         }
         let (media, analyses) = Self.material()
-        let plan = try #require(
-            try await FilmDirector.plan(instruction: "only pictures with the children", media: media.map(\.item), analyses: analyses)
-        )
+        let answer: DirectorPlan?
+        do {
+            answer = try await FilmDirector.plan(instruction: "only pictures with the children", media: media.map(\.item), analyses: analyses)
+        } catch {
+            #if targetEnvironment(simulator)
+            // The simulator can report the model as available without having its files.
+            print("Skipping: the model could not run in the simulator: \(error)")
+            return
+            #else
+            throw error
+            #endif
+        }
+        let plan = try #require(answer)
         var input = GenerationInput(media: media, analyses: analyses, targetDuration: 20, style: .travel, song: nil, seed: 2, format: .portrait)
         input.directorPlan = plan
         let edl = FilmGenerator.plan(input)

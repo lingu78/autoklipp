@@ -7,7 +7,9 @@ import Testing
 struct BeatTrackerTests {
     /// An onset envelope like a pop song: strong beats, weaker off-beats and 16ths, noise.
     static func envelope(bpm: Double, seconds: Double, frameRate: Double = 86.13, jitter: Double = 0.008,
-                         offset: Double = 0.21, seed: UInt64 = 1) -> (envelope: [Double], beats: [Double]) {
+                         offset: Double = 0.21, offBeat: Double = 0.45, seed: UInt64 = 1)
+        -> (envelope: [Double], beats: [Double])
+    {
         var rng = SeededGenerator(seed: seed)
         let count = Int(seconds * frameRate)
         var envelope = (0..<count).map { _ in 0.15 * rng.nextUnit() }
@@ -27,7 +29,7 @@ struct BeatTrackerTests {
                 envelope[whole + 1] += strength * fraction
             }
             hit(actual, beatIndex % 4 == 0 ? 1.6 : 1.0)
-            hit(actual + period / 2, 0.45)
+            hit(actual + period / 2, offBeat)
             hit(actual + period / 4, 0.2)
             hit(actual + 3 * period / 4, 0.2)
             time += period
@@ -41,11 +43,32 @@ struct BeatTrackerTests {
         let frameRate = 86.13
         let (envelope, truth) = Self.envelope(bpm: bpm, seconds: 60, frameRate: frameRate)
         let result = try #require(BeatTracker.track(envelope: envelope, frameRate: frameRate))
-        #expect(abs(result.bpm - bpm) < 1.5, "found \(result.bpm) BPM for \(bpm)")
-        // Every true beat after the first few seconds has a detected beat within 50 ms.
-        let checked = truth.filter { $0 > 3 && $0 < 57 }
-        let misses = checked.filter { beat in !result.beats.contains { abs($0 - beat) <= 0.05 } }
-        #expect(Double(misses.count) / Double(checked.count) < 0.05, "\(misses.count) of \(checked.count) beats missed at \(bpm) BPM")
+        // A fast song with an accented downbeat may be followed every other beat; every cut
+        // still lands on a beat.
+        let halved = bpm >= 120 && abs(result.bpm - bpm / 2) < 1
+        #expect(abs(result.bpm - bpm) < 1.5 || halved, "found \(result.bpm) BPM for \(bpm)")
+        Self.expectOnTheBeat(result, truth: truth, step: (halved ? 2 : 1) * 60 / bpm, until: 57)
+    }
+
+    /// Off-beat eighths as strong as hi-hats and bass in dance music must not double the tempo.
+    @Test(arguments: [72.0, 84, 128])
+    func offBeatEighthsDoNotDoubleTheTempo(bpm: Double) throws {
+        let frameRate = 86.13
+        let (envelope, truth) = Self.envelope(bpm: bpm, seconds: 60, frameRate: frameRate, offBeat: 0.7, seed: 5)
+        let result = try #require(BeatTracker.track(envelope: envelope, frameRate: frameRate))
+        let halved = bpm >= 120 && abs(result.bpm - bpm / 2) < 1
+        #expect(abs(result.bpm - bpm) < 1.5 || halved, "found \(result.bpm) BPM for \(bpm)")
+        Self.expectOnTheBeat(result, truth: truth, step: (halved ? 2 : 1) * 60 / bpm, until: 57)
+    }
+
+    /// Every detected beat is within 50 ms of a true beat, and none is skipped.
+    static func expectOnTheBeat(_ result: BeatTracker.Result, truth: [Double], step: Double, until end: Double) {
+        let detected = result.beats.filter { $0 > 3 && $0 < end }
+        let off = detected.filter { beat in !truth.contains { abs($0 - beat) <= 0.05 } }
+        #expect(Double(off.count) / Double(max(1, detected.count)) < 0.05, "\(off.count) of \(detected.count) beats off the beat")
+        let gaps = zip(detected.dropFirst(), detected).map { $0 - $1 }
+        let uneven = gaps.filter { abs($0 - step) > 0.1 * step }
+        #expect(uneven.count <= gaps.count / 20, "\(uneven.count) of \(gaps.count) gaps are not one step")
     }
 
     @Test func followsTheTimeOffset() throws {
