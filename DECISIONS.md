@@ -43,6 +43,9 @@ Format: **Beslut** – motivering – (datum, fas).
 - **TestFlight utan Mac:** arbetsflödet `testflight.yml` arkiverar, signerar automatiskt med en
   App Store Connect API-nyckel och laddar upp. Engångsstegen som kräver ägarens konto står i
   `RELEASE.md`. (2026-10-20)
+- **Arkivet byggs osignerat och signeras först vid uppladdningen** med ett distributionscertifikat
+  som Apple sköter i molnet. Automatisk signering signerar annars arkivet för utveckling först,
+  och det kräver en registrerad iPhone på kontot (första körningen stoppade på det). (2026-10-21)
 
 ## 3. Mediaval och metadata
 
