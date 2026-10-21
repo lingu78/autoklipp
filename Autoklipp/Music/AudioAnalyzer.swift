@@ -118,7 +118,8 @@ enum AudioAnalyzer {
         return result
     }
 
-    static func readMono(url: URL) async throws -> [Float] {
+    /// The song as 22 kHz mono samples, at most its first `maximumDuration` seconds.
+    static func readMono(url: URL, maximumDuration: Double = AudioAnalyzer.maximumDuration) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { throw AnalysisError.noAudio }
         let duration = (try? await asset.load(.duration).seconds) ?? 0

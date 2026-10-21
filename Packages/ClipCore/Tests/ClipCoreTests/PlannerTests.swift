@@ -84,6 +84,41 @@ struct PlannerLengthTests {
                 }
             }
         }
+
+        // Every clip before the last still is at its longest, so the cut before it cannot move
+        // later; the film ends when the still has been shown for 4 s instead.
+        let tight = Fixtures.mixedMedia(photos: 3, videoDurations: [18])
+        let film = Planner.plan(Fixtures.request(media: tight, target: 29, style: .calm, bpm: 92))
+        expectWellFormed(film, media: tight)
+        #expect(abs(film.duration - 29) <= Timing.lengthTolerance, "\(film.duration)")
+        #expect(film.notices.isEmpty)
+        #expect(film.clips.last!.kind.isStill)
+        #expect(Timing.stillRange.contains(film.clips.last!.duration), "last still shown \(film.clips.last!.duration) s")
+    }
+
+    @Test func theLastVideoIsNotStretchedToTheEnd() {
+        // The last clip comes from the end of a video and ends a fraction of a beat before the
+        // target; filling that fraction would slow it down and mute it. In the last three every
+        // clip before it is already at its longest, so the film ends when its footage does.
+        let media = Fixtures.mixedMedia(photos: 0, videoDurations: [25.5, 28.6])
+        let cases: [(style: StyleID, bpm: Double, target: Double)] = [
+            (.energetic, 76, 38), (.energetic, 76, 43), (.energetic, 90, 43), (.energetic, 104, 43),
+            (.energetic, 132, 32), (.nostalgic, 90, 43), (.nostalgic, 132, 49),
+            (.energetic, 86, 47), (.energetic, 72, 46), (.energetic, 104, 50),
+        ]
+        for setup in cases {
+            var request = Fixtures.request(media: media, target: setup.target, style: setup.style, bpm: setup.bpm)
+            request.originalAudio = true
+            let edl = Planner.plan(request)
+            let context = "\(setup.style) \(setup.bpm) BPM \(setup.target) s"
+            expectWellFormed(edl, media: media)
+            #expect(abs(edl.duration - setup.target) <= Timing.lengthTolerance, "\(context): \(edl.duration)")
+            #expect(edl.notices.isEmpty, "\(context)")
+            let last = edl.clips.last!
+            #expect(last.duration >= Timing.minVideoClip - 1e-6, "\(context): last video \(last.duration) s")
+            #expect(last.playbackRate > 0.95, "\(context): last video plays at \(last.playbackRate)")
+            #expect(last.audioVolume > 0, "\(context)")
+        }
     }
 
     @Test func leftoverFootageIsNotTakenFromNeighbours() {

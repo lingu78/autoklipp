@@ -1001,6 +1001,16 @@
         }
       }
     },
+    "The film could not be saved to Photos. Try again.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filmen gick inte att spara i Bilder. Försök igen."
+          }
+        }
+      }
+    },
     "The music is lowered while people talk or cheer.": {
       "localizations": {
         "sv": {

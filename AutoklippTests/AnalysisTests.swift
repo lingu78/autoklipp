@@ -43,6 +43,9 @@ struct AnalysisTests {
         #expect(analysis.segments.count > MediaAnalyzer.framesPerRequest)
         #expect(analysis.segments.enumerated().allSatisfy { $1.start == Double($0) * Timing.segmentLength })
         #expect(analysis.segments.allSatisfy { $0.signature != nil })
+        // Motion compares with the previous frame across requests too: only the very first
+        // segment has none (and the fallback 0.3).
+        #expect(analysis.segments.dropFirst().allSatisfy { $0.metrics.motion != 0.3 })
 
         let sharpSteady = mean(analysis, 0..<4) { $0.sharpness }
         let sharpBlurred = mean(analysis, 4..<8) { $0.sharpness }

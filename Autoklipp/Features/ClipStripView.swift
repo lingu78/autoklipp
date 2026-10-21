@@ -16,6 +16,8 @@ struct ClipStripView: View {
     @ScaledMetric(relativeTo: .caption2) private var labelHeight: CGFloat = 17
     @State private var userScrolling = false
     @State private var userScrolledAt = Date.distantPast
+    /// Tiles a dragged clip is over; the strip holds still under the finger meanwhile.
+    @State private var dropTargetIDs: Set<String> = []
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -40,7 +42,7 @@ struct ClipStripView: View {
             }
             .onChange(of: playingClipID) { _, id in
                 // The strip follows the film, but not while the user is looking for a clip.
-                guard let id, !userScrolling, Date.now.timeIntervalSince(userScrolledAt) > 3 else { return }
+                guard let id, !userScrolling, dropTargetIDs.isEmpty, Date.now.timeIntervalSince(userScrolledAt) > 3 else { return }
                 withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
             }
         }
@@ -67,9 +69,13 @@ struct ClipStripView: View {
                     .frame(width: 64, height: 84)
             }
             .dropDestination(for: String.self) { ids, _ in
+                dropTargetIDs = []
                 guard !isBusy, let id = ids.first, id != clip.id else { return false }
                 edit(.move(clipID: id, toIndex: index))
                 return true
+            } isTargeted: { targeted in
+                if targeted { dropTargetIDs.insert(clip.id) } else { dropTargetIDs.remove(clip.id) }
+                userScrolledAt = .now
             }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 24).onEnded { value in

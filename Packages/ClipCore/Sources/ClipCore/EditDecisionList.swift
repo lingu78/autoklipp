@@ -150,7 +150,8 @@ public struct EditDecisionList: Codable, Sendable, Hashable {
     public var version: Int
     public var targetDuration: Double
     /// Actual length; equals the target unless the material ran out, or the locked clips need
-    /// more than the target (they always keep their place).
+    /// more than the target (they always keep their place). It can also be a fraction of a second
+    /// off when the last clip could not otherwise be shown within its limits.
     public var duration: Double
     public var style: StyleID
     public var seed: UInt64

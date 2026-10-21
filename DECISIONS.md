@@ -65,6 +65,8 @@ Format: **Beslut** – motivering – (datum, fas).
 - **"N objekt kunde inte läsas" gäller det aktuella urvalet:** varje trasigt objekt räknas en gång, och avmarkeras det försvinner det ur antalet. Misslyckade objekt försöks igen när urvalet ändras, så ett iCloud-objekt som laddas ned senare kommer med. (2026-10-21, granskning)
 - **Importförloppet** summerar förloppet för de objekt som laddas samtidigt. Lämnar användaren vyn mitt i en import avbryts den, och en kopia som inte kunde flyttas in i projektet tas bort. (2026-10-21, granskning)
 
+- **Väljs ett avmarkerat objekt igen** återanvänds dess kopia och analys, om filen inte har städats bort sedan; annars importeras det på nytt. (2026-10-21, granskning)
+- **Medan en ändring i klippremsan pågår** går urvalet inte att ändra och Börja om är avstängd, eftersom ändringen sparar projektet när den är klar. (2026-10-21, granskning)
 ## 4. Klipplogik (ClipCore)
 
 - **Algoritmen** (se `Planning.swift`): videor poängsätts i 0,5 s-segment, stillbilder som helhet;
@@ -90,7 +92,7 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Fas 1 använder samma motor som de senare faserna** i stället för en tillfällig "jämn
   klipplängd"-variant: utan analys får alla segment samma neutrala poäng, och stilen ger
   jämna klipplängder (t.ex. Resa: 2 s vid 120 BPM). (2026-10-20, fas 1)
-- **Sista klippet** kapas vid mållängden men ska ändå visas inom sina gränser (stillbild 1,5–4 s, film minst 0,5 s). Snittet före flyttas då ett taktslag i taget genom att tidigare klipp kortas eller förlängs; räcker inte det tas ett sista moment som planeraren själv lagt till bort. (2026-10-21, granskning)
+- **Sista klippet** kapas vid mållängden men visas ändå inom sina gränser: stillbild 1,5–4 s, film minst 0,5 s och aldrig längre än materialet i sitt utrymme (annars skulle det spelas långsammare och utan eget ljud). Snittet före flyttas ett taktslag i taget genom att tidigare klipp kortas eller förlängs; räcker inte det tas ett sista moment som planeraren själv lagt till bort. Går det ändå inte slutar filmen där sista klippet tar slut (högst cirka 0,4 s före mållängden) eller, i användarens egen ordning, när ett för kort sista klipp har visats sin minsta längd (en bråkdels sekund efter). Längden håller sig inom ±1 s. (2026-10-21, granskning)
 - **Material som inte räcker:** nya moment tas bara ur material som inget klipp redan spelar i sin nuvarande längd, och ett nytt moment får aldrig tvinga ett befintligt klipp över sin hårda gräns. Klipp saktas alltså aldrig ned för att fylla ut filmen. (2026-10-21, granskning)
 - **Längdvarningen** räknar stillbilder med de hela taktslag de får vara i den valda låten (t.ex. 6 slag = 3,46 s vid 104 BPM) i stället för 4 s. (2026-10-21, granskning)
 
@@ -246,7 +248,11 @@ Format: **Beslut** – motivering – (datum, fas).
   skugga, centrerad, med halvsekundstoning: titeln de första ~3 s, eftertexten de sista.
   Texten ändrar inte klipplistans tajming. (2026-10-20, fas 4)
 - **Ta bort i klippremsan:** bara klippet vars eget material togs bort försvinner. Grannklipp ur samma film behålls och får växa fram till exakt kanten av det borttagna avsnittet, aldrig in i det. (2026-10-21, granskning)
-- **Flytta och ta bort tajmar bara om det som ändrades:** klippen börjar från sina tidigare taktslagslängder, förlängs inom stilens gränser innan nya moment läggs till, och kortas innan något tas bort. (2026-10-21, granskning)
+- **Flytta och ta bort tajmar bara om det som ändrades:** klippen börjar från sina tidigare taktslagslängder, förlängs inom stilens gränser innan nya moment läggs till, och kortas, vid behov ända till sin minsta längd, innan något tas bort. Kan inget kortas och sista klippet är en film tas inget av användarens klipp bort; filmen blir i stället en bråkdels sekund längre än mållängden. (2026-10-21, granskning)
+- **Ett klipp i användarens ordning behåller sin startpunkt** så länge materialet efter den räcker till ett klipp och, med samma låt, till de taktslag klippet hade. Annars, t.ex. när ett sista klipp som kapats vid filmens slut flyttas in i filmen, börjar det så lite tidigare i sin film som behövs, i stället för att tappa ett taktslag eller spelas långsammare utan eget ljud. (2026-10-21, granskning)
+- **Nya moment i användarens ordning** läggs direkt efter det klipp som ligger närmast före i tid (eller i regissörens ordning), annars före det som ligger närmast efter, så att ett klipp som användaren flyttat inte knuffas från sin plats. (2026-10-21, granskning)
+- **Känd begränsning:** i mycket tajt material, där filmerna används nästan helt, kan ett kapat sista klipp som flyttas in i filmen ha mindre än ett taktslag oanvänt material mellan sin startpunkt och grannklippet ur samma film. Det spelas då upp till cirka 10 % långsammare utan eget ljud. (2026-10-21, granskning)
+- **En ändring i klippremsan som blir klar först efter att filmen tagits bort (eller efter Börja om) sparar den inte på nytt,** och felmeddelanden gäller bara filmen som visas. Klippremsan följer inte uppspelningen medan ett draget klipp hålls över remsan. (2026-10-21, granskning)
 - **Låsta klipp tas aldrig bort.** Får de inte plats i mållängden blir filmen så mycket längre (±1 s-kravet i F2 får vika, eftersom låsta klipp alltid ska vara kvar). (2026-10-21, granskning)
 - **Byt stil- och Byt musik-arken** ändrar projektet direkt, men Avbryt och nedsvepning återställer stil, musik, egen låt och originalljud. Medan en egen låt analyseras kan arket inte stängas. (2026-10-21, granskning)
 - **Användarens ordning i klippremsan behålls när bara musiken eller ljudet byts;** klippen tajmas bara om. Byte av stil, en ny version, ändrat material eller en ny beskrivning gör urvalet på nytt. (2026-10-21, granskning)
@@ -286,8 +292,8 @@ Format: **Beslut** – motivering – (datum, fas).
   plan följs (barnklipp i majoritet). Testet som frågar den riktiga modellen ("only pictures with
   the children") hoppar över sig självt i en simulator där modellen inte kan köras och körs på en
   iPhone med Apple Intelligence. (2026-10-20, fas 5)
-- **Omgångarnas storlek:** utan `tokenCount` (iOS före 26.4) uppskattas en och en halv tecken per token, eftersom datum, koordinater och poäng blir många korta token. Varje klipp får 10 token i svaret och 1 000 token hålls fria för svarsformatet. Blir en omgång ändå för stor delas den på mitten och frågas igen. (2026-10-21, granskning)
-- **En omgång som misslyckas** (t.ex. guardrail) tappar bara sina egna klipp; planen byggs av de omgångar som lyckades, och beskrivningen räknas som misslyckad först när alla omgångar misslyckats. Varje svar får bara använda id:n från sin egen omgång. (2026-10-21, granskning)
+- **Omgångarnas storlek:** utan `tokenCount` (iOS före 26.4) uppskattas en och en halv tecken per token, eftersom datum, koordinater och poäng blir många korta token. Varje klipp får 10 token i svaret och 1 000 token hålls fria för svarsformatet. Blir en omgång ändå för stor delas den på mitten och frågas igen. Lämnar beskrivningen färre än 400 token åt klipplistan ges ingen plan alls (filmen görs som vanligt och aviseringen visas). (2026-10-21, granskning)
+- **En omgång som misslyckas på grund av sina egna klipp** (för lång, guardrail eller ett svar som inte går att läsa) tappar bara de klippen; planen byggs av de omgångar som lyckades, och beskrivningen räknas som misslyckad först när alla omgångar misslyckats. Andra fel, t.ex. rate limit eller saknade modellresurser, gör att hela beskrivningen räknas som misslyckad: filmen görs som vanligt och aviseringen visas, så att en plan aldrig tyst saknar en del av materialet. Varje svar får bara använda id:n från sin egen omgång. (2026-10-21, granskning)
 - **Regissörens urval förlängs först** och får fler moment ur valda filmer innan annat material fyller på; påfyllnaden kommer i få, långa klipp. Med 10 av 30 bilder och 60 s blir valda klipp i majoritet. (2026-10-21, granskning)
 - **Planen återanvänds bara när beskrivningen och materialet är exakt desamma;** tillagt material ger en ny plan. När regissören föreslår en stil och användaren inte valt låt byts låten till stilens förslag före planeringen, så att filmen, projektet och exporten har samma låt. (2026-10-21, granskning)
 - **Regissörens titelförslag används tills användaren själv skrivit eller tagit bort en titel;** en ny beskrivning ger då en ny titel. (2026-10-21, granskning)
@@ -298,6 +304,7 @@ Format: **Beslut** – motivering – (datum, fas).
   appen läser aldrig biblioteket. Delning via systemets delningsmeny (`ShareLink`). (2026-10-20, fas 1)
 - **Exporten har en utgångshanterare:** tar bakgrundstiden slut avbryts exporten, bakgrundsuppgiften avslutas (annars avslutar iOS appen) och användaren får en notis. Bara den senaste exporten ligger kvar i den tillfälliga mappen. (2026-10-21, granskning)
 
+- **Skärmen hålls tänd medan en export pågår** (`isIdleTimerDisabled`), eftersom automatisk skärmlåsning annars skickar appen till bakgrunden. Den tillfälliga exportmappen töms också när appen startar. (2026-10-21, granskning)
 ## 8. Språk och tillgänglighet
 
 - **Engelska är källspråk i String Catalog, svenska är översatt.** Katalogen skrivs av

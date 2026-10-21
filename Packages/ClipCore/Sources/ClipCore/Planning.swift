@@ -213,6 +213,9 @@ struct PlanningEngine {
     var sourceIndexByID: [String: Int] = [:]
     /// Sources dropped as near duplicates; never added back.
     var rejectedSources: Set<Int> = []
+    /// The user's arrangement was cut on this request's beats (the same song), so the beats its
+    /// clips had still apply.
+    var arrangementOnTheBeat = false
 
     // Beat counts derived from the tempo.
     let stillMinBeats: Int
@@ -278,8 +281,8 @@ struct PlanningEngine {
             moments = ordered(initialMoments())
             moments = removingNeighbourDuplicates(moments)
         }
-        let (slots, shortage, overrun) = fit(moments)
-        return makeEDL(slots: slots, shortage: shortage, overrun: overrun)
+        let (slots, shortage, overrun, endsAtTailLimit) = fit(moments)
+        return makeEDL(slots: slots, shortage: shortage, overrun: overrun, endsAtTailLimit: endsAtTailLimit)
     }
 
     /// Moments for the clips of an earlier edit, in their order, minus removed material.
@@ -628,7 +631,6 @@ struct PlanningEngine {
                 var roomStart = position == 0 ? 0 : (result[sorted[position - 1]].moment.end + moment.start) / 2
                 var roomEnd = position == sorted.count - 1
                     ? source.item.duration : (moment.end + result[sorted[position + 1]].moment.start) / 2
-                if moment.anchor != nil { roomStart = moment.start }
                 roomStart = min(roomStart, moment.start)
                 roomEnd = max(roomEnd, moment.end)
                 // Do not grow into ranges the user removed, up to their exact edges.
@@ -636,11 +638,19 @@ struct PlanningEngine {
                     if removed.start < moment.end - 1e-6 { roomStart = max(roomStart, min(removed.end, moment.start)) }
                     if removed.end > moment.start + 1e-6 { roomEnd = min(roomEnd, max(removed.start, moment.end)) }
                 }
-                result[index].roomStart = roomStart
-                result[index].roomEnd = roomEnd
                 // An anchor's in-point sits on a frame, so its room can fall a fraction of a frame
                 // short of the beats it had.
                 let slack = moment.anchor != nil ? 1 / Double(max(1, request.frameRate)) : 0
+                // An anchor keeps its in-point, unless the footage after it is too short for a clip
+                // (or, to the same song, for the beats it had), say a last clip cut at the end of the
+                // film that is moved: it then starts as little earlier as needed rather than play
+                // slowed down or lose a beat.
+                let needed = arrangementOnTheBeat ? max(videoMinBeats, moment.anchor?.beats ?? 0) : videoMinBeats
+                if moment.anchor != nil, roomEnd - moment.start + slack >= Double(needed) * beatPeriod {
+                    roomStart = moment.start
+                }
+                result[index].roomStart = roomStart
+                result[index].roomEnd = roomEnd
                 let fit = Int(((roomEnd - roomStart + slack) / beatPeriod + 1e-6).rounded(.down))
                 result[index].hardMin = videoMinBeats
                 result[index].hardMax = max(videoMinBeats, fit)
@@ -688,14 +698,15 @@ struct PlanningEngine {
         return !clips.isEmpty && Double(onBeat.count) >= 0.9 * Double(clips.count)
     }
 
-    mutating func fit(_ moments: [Moment]) -> (slots: [Slot], shortage: Bool, overrun: Bool) {
+    mutating func fit(_ moments: [Moment]) -> (slots: [Slot], shortage: Bool, overrun: Bool, endsAtTailLimit: Bool) {
+        if let arrangement = request.arrangement { arrangementOnTheBeat = isOnTheBeat(arrangement) }
         var slots = moments.map { Slot(moment: $0, k: 1) }
         slots = recomputed(slots)
         for index in slots.indices { slots[index].k = slots[index].pref }
         slots = recomputed(slots)
         for index in slots.indices { slots[index].k = slots[index].pref }
         let arranged = request.arrangement != nil
-        if let arrangement = request.arrangement, isOnTheBeat(arrangement) {
+        if arrangementOnTheBeat {
             // On the same beat, the user's clips start from the lengths they had, so only what
             // changed is re-timed. (To another song they start from the style's lengths.)
             for index in slots.indices {
@@ -729,9 +740,17 @@ struct PlanningEngine {
                 }
                 slots = longer
             } else if lastStart >= target - tolerance {
-                // The user's own arrangement keeps its clips as long as lengths can give.
-                if let index = shrinkCandidate(slots, limit: .preferred) ?? (arranged ? shrinkCandidate(slots, limit: .soft) : nil) {
+                // The user's own arrangement keeps its clips as long as lengths can give, and rather
+                // than lose one it ends a little after the target when its last clip can (see
+                // `endsAtTailLimit` below).
+                if let index = shrinkCandidate(slots, limit: .preferred)
+                    ?? (arranged ? shrinkCandidate(slots, limit: .soft) ?? shrinkCandidate(slots, limit: .hard) : nil)
+                {
                     slots[index].k -= 1
+                } else if arranged, lastStart < target - 1e-6,
+                          lastStart + tailLimits(slots[slots.count - 1]).lowerBound <= target + Timing.lengthTolerance
+                {
+                    break
                 } else if let index = removalCandidate(slots, total: total) {
                     slots.remove(at: index)
                     slots = recomputed(slots)
@@ -755,14 +774,22 @@ struct PlanningEngine {
             }
             slots.removeLast()
         }
+        var endsAtTailLimit = false
         if !shortage && !overrun, !slots.isEmpty {
             slots = balancedTail(slots)
-            // Likewise a locked last clip is shown in full rather than cut to a flash.
-            if let last = slots.last, last.moment.locked != nil, tailDuration(slots) < tailLimits(last).lowerBound - 1e-6 {
+            let tail = tailDuration(slots)
+            let limits = tailLimits(slots[slots.count - 1])
+            if slots[slots.count - 1].moment.locked != nil, tail < limits.lowerBound - 1e-6 {
+                // Likewise a locked last clip is shown in full rather than cut to a flash.
                 overrun = true
+            } else if tail < limits.lowerBound - 1e-6 || tail > limits.upperBound + 1e-6 {
+                // The clips before it cannot be re-timed (or the last clip is the user's own), so
+                // the film ends a little before or after the target rather than show the last clip
+                // too briefly, too long or slowed down.
+                endsAtTailLimit = true
             }
         }
-        return (slots, shortage, overrun)
+        return (slots, shortage, overrun, endsAtTailLimit)
     }
 
     /// One way of making a film that is too short longer.
@@ -816,15 +843,18 @@ struct PlanningEngine {
         quantized(target) - quantized(beatTime(totalBeats(slots) - slots[slots.count - 1].k))
     }
 
-    /// How long a clip may be on screen: stills within spec F6, videos at least a minimum clip.
+    /// How long a clip may be on screen: stills within spec F6, videos at least a minimum clip and
+    /// at most the footage of their room (give or take a frame), since longer they play slowed down.
     func tailLimits(_ slot: Slot) -> ClosedRange<Double> {
-        sources[slot.moment.source].isStill ? Timing.stillRange : Timing.minVideoClip...Double.greatestFiniteMagnitude
+        if sources[slot.moment.source].isStill { return Timing.stillRange }
+        let room = slot.roomEnd - slot.roomStart + 1 / Double(max(1, request.frameRate))
+        return Timing.minVideoClip...max(Timing.minVideoClip, room)
     }
 
     /// Cutting the film at the target can leave the last clip on screen for less than a clip may
     /// be (or a still for more). The cut before it then moves a beat at a time by re-timing the
     /// clips before it; when that is not enough, a last moment the planner added itself makes
-    /// way for longer clips before it.
+    /// way for longer clips before it. Failing that, `fit` ends the film a little off the target.
     func balancedTail(_ slots: [Slot]) -> [Slot] {
         if let shifted = shiftedTail(slots) { return shifted }
         guard slots.count > 1, slots[slots.count - 1].moment.anchor == nil else { return slots }
@@ -964,10 +994,16 @@ struct PlanningEngine {
             }
         }
 
+        let keys = slots.map { orderKey($0.moment) }
         for candidate in candidates.sorted(by: { $0.value > $1.value }) {
             var newSlots = slots
             let key = orderKey(candidate.moment)
-            let position = newSlots.firstIndex { orderKey($0.moment) > key } ?? newSlots.count
+            // Right after the clip just before it in time (or in the director's order), else right
+            // before the one just after it, so that in the user's own arrangement it joins a clip
+            // next to it in time wherever the user moved that clip.
+            let previous = keys.indices.filter { keys[$0] < key }.max { keys[$0] < keys[$1] }
+            let next = keys.indices.filter { keys[$0] > key }.min { keys[$0] < keys[$1] }
+            let position = previous.map { $0 + 1 } ?? next ?? newSlots.count
             // Skip a moment that would sit next to a near-identical one.
             if position > 0, isNearDuplicate(newSlots[position - 1].moment, candidate.moment) { continue }
             if position < newSlots.count, isNearDuplicate(newSlots[position].moment, candidate.moment) { continue }
@@ -994,9 +1030,19 @@ struct PlanningEngine {
         return (time * fps).rounded() / fps
     }
 
-    mutating func makeEDL(slots: [Slot], shortage: Bool, overrun: Bool) -> EditDecisionList {
+    mutating func makeEDL(slots: [Slot], shortage: Bool, overrun: Bool, endsAtTailLimit: Bool) -> EditDecisionList {
         let total = totalBeats(slots)
-        let filmEnd = shortage || overrun ? quantized(beatTime(total)) : quantized(target)
+        var filmEnd = shortage || overrun ? quantized(beatTime(total)) : quantized(target)
+        if endsAtTailLimit, let last = slots.last {
+            // The last clip within its limits, on whole frames and never past its footage.
+            let fps = Double(max(1, request.frameRate))
+            let start = quantized(beatTime(total - last.k))
+            let limits = tailLimits(last)
+            let upper = sources[last.moment.source].isStill ? limits.upperBound : last.roomEnd - last.roomStart
+            let shortest = start + (limits.lowerBound * fps).rounded(.up) / fps
+            let longest = start + (upper * fps).rounded(.down) / fps
+            filmEnd = min(max(filmEnd, shortest), longest)
+        }
 
         var clips: [EDLClip] = []
         var anchoredTransitions: [TransitionKind?] = []

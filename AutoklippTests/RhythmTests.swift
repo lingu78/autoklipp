@@ -94,6 +94,17 @@ struct RhythmTests {
         #expect(AudioAnalyzer.maximumDuration >= AutoLength.range.upperBound + Timing.lengthTolerance)
     }
 
+    /// Decoding stops at the limit and keeps exactly that much; a song shorter than the limit is
+    /// decoded whole.
+    @Test func songDecodingStopsAtTheLimit() async throws {
+        let url = try #require(MusicCatalog.track(id: "sommarvind")?.url)
+        let start = try await AudioAnalyzer.readMono(url: url, maximumDuration: 5)
+        #expect(start.count == Int(5 * AudioAnalyzer.sampleRate))
+        let whole = try await AudioAnalyzer.readMono(url: url)
+        let duration = try await AVURLAsset(url: url).load(.duration).seconds
+        #expect(abs(Double(whole.count) / AudioAnalyzer.sampleRate - duration) < 0.1, "\(whole.count) samples for \(duration) s")
+    }
+
     @Test func stylesLookAndPaceDifferently() throws {
         // Pace: average clip length per style on the same material and song.
         let song = try #require(MusicCatalog.track(id: "sommarvind")?.choice)

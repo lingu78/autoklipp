@@ -55,6 +55,11 @@ final class AppModel {
         }
         // Only the real store knows every saved project; with the fallback all would look abandoned.
         if persistent { removeAbandonedProjects() }
+        if !inMemory {
+            // An export is only kept until it is saved or shared, never across launches.
+            let exports = draft.storage.exportDirectory
+            Task.detached { try? FileManager.default.removeItem(at: exports) }
+        }
     }
 
     private var context: ModelContext { container.mainContext }
@@ -115,14 +120,19 @@ final class AppModel {
         save(draft)
     }
 
-    /// Writes a project to the store; an edit that finishes after the user left its film still counts.
-    private func save(_ draft: ProjectDraft) {
+    /// Writes a project to the store; an edit that finishes after the user left its film still counts,
+    /// unless the film has been deleted or opened again since.
+    func save(_ draft: ProjectDraft) {
         guard draft.edl != nil, let payload = try? JSONEncoder().encode(draft.snapshot()) else { return }
+        // The user reopened this film meanwhile; the copy now open owns its saved record.
+        if draft !== self.draft, self.draft.id == draft.id { return }
         let project: SavedProject
         if let existing = savedProject(id: draft.id) {
             project = existing
             project.payload = payload
         } else {
+            // An edit that finishes after its film was deleted must not bring the film back.
+            guard draft === self.draft else { return }
             project = SavedProject(id: draft.id, title: draft.displayTitle, duration: 0, payload: payload)
             context.insert(project)
         }
@@ -212,7 +222,8 @@ final class AppModel {
             guard draft.edl == edl else { return }
             preview = PreviewSession(edl: edl, built: built)
         } catch {
-            message = Self.buildFailedMessage
+            // Not for a film the user left (or deleted) before it was ready.
+            if draft.edl == edl, !Task.isCancelled { message = Self.buildFailedMessage }
         }
     }
 
@@ -271,10 +282,11 @@ final class AppModel {
             guard draft.edl == edl, preview === session else { return }
             let seekTime = focus.flatMap { id in edl.clips.first { $0.id == id }?.timelineStart }
             await session.replace(edl: edl, built: built, seekTo: seekTime)
-            // The user went back while it was being made: the film must not play unseen.
-            if path.last != .preview { session.player.pause() }
+            // The user went back or opened another film meanwhile: this one must not play unseen.
+            if path.last != .preview || preview !== session { session.player.pause() }
         } catch {
-            if draft.edl == edl { message = Self.buildFailedMessage }
+            // Reported only for the film still shown, the same as a finished result.
+            if draft.edl == edl, preview === session { message = Self.buildFailedMessage }
         }
     }
 

@@ -1,5 +1,6 @@
 import ClipCore
 import SwiftUI
+import UIKit
 
 /// Step 6: render at full quality, then save to Photos or share.
 struct ExportView: View {
@@ -108,6 +109,9 @@ struct ExportView: View {
         let settings = RenderSettings(format: format, resolution: resolution)
         let folder = draft.storage.exportDirectory
         exportTask = Task {
+            // The screen locking itself would send the app away and cut a long export short.
+            UIApplication.shared.isIdleTimerDisabled = true
+            defer { UIApplication.shared.isIdleTimerDisabled = false }
             await FinishNotifier.requestPermissionIfNeeded()
             // Only the newest export is kept; earlier ones have been saved or shared by now.
             try? FileManager.default.removeItem(at: folder)
@@ -150,7 +154,9 @@ struct ExportView: View {
             saved = true
             message = nil
         } catch {
-            message = error.localizedDescription
+            // Photos' own errors are technical codes.
+            message = (error as? PhotoLibrarySaver.SaveError)?.errorDescription
+                ?? String(localized: "The film could not be saved to Photos. Try again.")
         }
     }
 }

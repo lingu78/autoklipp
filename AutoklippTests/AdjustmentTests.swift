@@ -158,6 +158,50 @@ struct AdjustmentTests {
         #expect(exists(used))
     }
 
+    /// An edit that finishes after its film was deleted does not bring the film back.
+    @Test func aDeletedFilmStaysDeleted() throws {
+        let model = AppModel(inMemory: true)
+        let draft = model.draft
+        draft.edl = EditDecisionList(targetDuration: 15, duration: 15, style: .travel, seed: 1, clips: [])
+        model.save()
+        let saved = try #require(model.savedProject(id: draft.id))
+        model.delete(saved)
+        model.save(draft)
+        #expect(model.savedProject(id: draft.id) == nil)
+
+        // An edit that finishes after the user left a film that is still saved updates it.
+        let other = model.draft
+        other.edl = EditDecisionList(targetDuration: 15, duration: 15, style: .travel, seed: 1, clips: [])
+        model.save()
+        model.newProject()
+        other.title = "Midsommar"
+        model.save(other)
+        #expect(model.savedProject(id: other.id)?.title == "Midsommar")
+
+        // Once the film is opened again, that copy owns it; a late edit of the earlier one is not saved.
+        let reopened = try #require(model.savedProject(id: other.id))
+        model.open(reopened)
+        other.title = "Sankthans"
+        model.save(other)
+        #expect(model.savedProject(id: other.id)?.title == "Midsommar")
+    }
+
+    /// A film from the list that cannot be made is reported, unless the user left it first.
+    @Test func aFailedPreviewIsReportedUnlessTheUserLeft() async {
+        let model = AppModel(inMemory: true)
+        // A film without clips cannot be made.
+        model.draft.edl = EditDecisionList(targetDuration: 15, duration: 15, style: .travel, seed: 1, clips: [])
+        await model.preparePreview()
+        #expect(model.message == AppModel.buildFailedMessage)
+
+        // Going back cancels the preview's task.
+        model.message = nil
+        let opening = Task { await model.preparePreview() }
+        opening.cancel()
+        await opening.value
+        #expect(model.message == nil)
+    }
+
     private func exists(_ url: URL) -> Bool {
         FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
@@ -202,6 +246,33 @@ struct AdjustmentTests {
 
         model.delete(saved)
         #expect(model.savedProject(id: saved.id) == nil)
+    }
+
+    /// An edit whose film cannot be made is reported while the film is shown, not after the user left it.
+    @Test(.timeLimit(.minutes(10)))
+    func aFailedEditIsReportedOnlyForTheShownFilm() async throws {
+        let model = try await preparedModel()
+        let id = model.draft.id
+        let storage = model.draft.storage
+        defer { storage.removeAll() }
+        // The film's last video is gone, so the film can no longer be made.
+        let session = try #require(model.preview)
+        let lastVideo = try #require(session.edl.clips.last { $0.kind == .video })
+        let missing = try #require(model.draft.media.first { $0.id == lastVideo.mediaID })
+        try FileManager.default.removeItem(at: missing.url)
+        await model.setTexts(title: "Midsommar", endCredit: "")
+        #expect(model.message == AppModel.buildFailedMessage)
+
+        // The user starts a new film while the next change is being made.
+        model.message = nil
+        let edit = Task { await model.setTexts(title: "Sankthans", endCredit: "") }
+        await Task.yield()
+        #expect(model.isEditing)
+        model.newProject()
+        await edit.value
+        #expect(model.message == nil)
+        // The film the user left still keeps the change.
+        #expect(model.savedProject(id: id)?.title == "Sankthans")
     }
 
     @Test func titleAndCreditAreDrawnOverTheFilm() throws {

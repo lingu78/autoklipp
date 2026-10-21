@@ -60,7 +60,9 @@ enum FilmDirector {
         guard !descriptions.isEmpty else { return nil }
 
         let fixed = instructionText + "\nWish: " + instruction + "\nClips:\n"
-        let budget = max(400, model.contextSize - answerReserve - (try await tokens(fixed, model: model)))
+        let budget = model.contextSize - answerReserve - (try await tokens(fixed, model: model))
+        // A description so long that only a few clips would fit beside it cannot be directed.
+        guard budget >= 400 else { return nil }
         // Count each line with the framework where it can count, else estimate, plus its room in
         // the answer.
         var costs: [String: Int] = [:]
@@ -71,7 +73,8 @@ enum FilmDirector {
             costs[$0] ?? estimatedTokens($0) + answerTokensPerClip
         }
 
-        // A batch that fails loses only its own clips; the description fails only when all do.
+        // A batch that fails because of its own clips loses only those; the description fails
+        // when all batches do, or at once on an error that is not about the batch.
         var answers: [DirectorAnswer] = []
         var failure: (any Error)?
         while !pending.isEmpty {
@@ -79,9 +82,7 @@ enum FilmDirector {
             let batch = pending.removeFirst()
             do {
                 answers.append(try await answer(instruction: instruction, batch: batch, model: model))
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as LanguageModelSession.GenerationError {
+            } catch let error as LanguageModelSession.GenerationError where concernsOnlyItsBatch(error) {
                 if case .exceededContextWindowSize = error, batch.count > 1 {
                     // The batch was counted too small: ask again with each half.
                     let half = batch.count / 2
@@ -89,12 +90,23 @@ enum FilmDirector {
                 } else {
                     failure = error
                 }
-            } catch {
-                failure = error
             }
         }
         if answers.isEmpty, let failure { throw failure }
         return DirectorBriefing.plan(from: answers, descriptions: descriptions)
+    }
+
+    /// Whether a failed batch only loses its own clips: its lines did not fit, tripped the
+    /// guardrails or got an unreadable answer. Anything else, such as a rate limit (the app went to
+    /// the background) or missing model assets, would hit the other batches too, so the plan fails
+    /// as a whole rather than quietly leaving part of the material out.
+    private static func concernsOnlyItsBatch(_ error: LanguageModelSession.GenerationError) -> Bool {
+        switch error {
+        case .exceededContextWindowSize, .guardrailViolation, .decodingFailure:
+            return true
+        default:
+            return false
+        }
     }
 
     /// The model's answer for one batch of clips.

@@ -208,20 +208,37 @@ struct RenderingTests {
             to: url, duration: 3, width: 320, height: 180, color: TestMedia.RGB.palette[1], date: nil, toneLevel: 0.5
         )
         let item = MediaItem(id: "tone", kind: .video, duration: 3, pixelWidth: 320, pixelHeight: 180, hasAudio: true)
+        let stillURL = folder.appending(path: "still.png")
+        try TestMedia.solidImage(to: stillURL, color: TestMedia.RGB.palette[0], width: 320, height: 180)
+        let stillItem = MediaItem(id: "still", kind: .photo, pixelWidth: 320, pixelHeight: 180)
         // 2.88 s of footage fill 3 s; slowed this little, the clip keeps its sound.
         let clip = EDLClip(
             id: "tone", mediaID: "tone", kind: .video, sourceStart: 0, sourceDuration: 2.88,
             timelineStart: 0, duration: 3, beats: 4, audioVolume: 1
         )
-        let edl = EditDecisionList(targetDuration: 3, duration: 3, style: .calm, seed: 1, clips: [clip])
+        // The film runs on after the video, so cutting the sound at the film's end cannot hide
+        // a sound stretched too far.
+        let still = EDLClip(
+            id: "still", mediaID: "still", kind: .photo, sourceStart: 0, sourceDuration: 1,
+            timelineStart: 3, duration: 1, beats: 1
+        )
+        let edl = EditDecisionList(targetDuration: 4, duration: 4, style: .calm, seed: 1, clips: [clip, still])
         let inputs = RenderInputs(
-            edl: edl, media: ["tone": ImportedMedia(item: item, url: url)], musicURL: nil,
-            settings: RenderSettings(format: .landscape, previewShortSide: 180)
+            edl: edl,
+            media: ["tone": ImportedMedia(item: item, url: url), "still": ImportedMedia(item: stillItem, url: stillURL)],
+            musicURL: nil, settings: RenderSettings(format: .landscape, previewShortSide: 180)
         )
         let built = try await CompositionBuilder.build(inputs)
         let sound: AVAssetTrack = try #require(try await built.composition.loadTracks(withMediaType: .audio).first)
         let range = try await sound.load(.timeRange)
         #expect(abs(range.end.seconds - 3) < 0.02, "the sound ends at \(range.end.seconds) s, the picture at 3 s")
+        // The 2.88 s of sound are stretched once, by the picture's ratio, from the clip's start.
+        let segments = try await sound.load(.segments)
+        let segment = try #require(segments.first { !$0.isEmpty })
+        let mapping = segment.timeMapping
+        #expect(abs(mapping.source.duration.seconds - 2.88) < 0.02, "source \(mapping.source.duration.seconds) s")
+        #expect(abs(mapping.target.duration.seconds - 3) < 0.02, "target \(mapping.target.duration.seconds) s")
+        #expect(abs(mapping.target.start.seconds) < 0.02, "the sound starts at \(mapping.target.start.seconds) s")
     }
 }
 

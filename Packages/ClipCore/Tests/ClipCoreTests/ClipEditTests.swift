@@ -126,6 +126,98 @@ struct ClipEditTests {
         }
     }
 
+    @Test func aMovedLastClipKeepsItsSpeedAndSound() {
+        // The last clip was cut to 0.5 s at the end of its video, and a clip needs two beats
+        // (0.97 s) at 124 BPM. Moved into the film it starts a little earlier in its video
+        // instead of playing slowed down and muted, and so it does when a clip is moved behind it.
+        let media = Fixtures.mixedMedia(photos: 0, videoDurations: [60, 60, 60, 60])
+        var request = Fixtures.request(media: media, target: 45, style: .energetic, bpm: 124)
+        request.originalAudio = true
+        let edl = Planner.plan(request)
+        #expect(edl.clips.last!.duration < 0.9)
+        let edits: [ClipEdit] = [.move(clipID: edl.clips.last!.id, toIndex: 0), .move(clipID: edl.clips[0].id, toIndex: edl.clips.count)]
+        for edit in edits {
+            let (result, _) = Planner.apply(edit, to: edl, request: request)
+            expectWellFormed(result, media: media)
+            #expect(Set(result.clips.map(\.id)) == Set(edl.clips.map(\.id)), "\(edit)")
+            #expect(abs(result.duration - 45) <= Timing.lengthTolerance)
+            for clip in result.clips {
+                #expect(clip.playbackRate > 0.95, "\(edit): \(clip.id) plays at \(clip.playbackRate)")
+                #expect(clip.audioVolume > 0, "\(edit): \(clip.id) is muted")
+            }
+        }
+    }
+
+    @Test func movingKeepsTheSameClipsWhenNothingCanGive() {
+        // Tight cases: the last clip had fewer beats of footage left than it spanned, or every clip
+        // is at its shortest. A move still keeps every clip, with no new ones; at most the film
+        // ends a little after the target so that the last clip is not cut to a flash.
+        let setups: [(media: [MediaItem], target: Double, bpm: Double)] = [
+            (Fixtures.mixedMedia(photos: 0, videoDurations: [60, 60, 60, 60]), 38, 104),
+            (Fixtures.mixedMedia(photos: 0, videoDurations: [25.5, 28.6]), 27, 104),
+            (Self.media, 27, 90),
+            (Self.media, 45, 86),
+        ]
+        for setup in setups {
+            let request = Fixtures.request(media: setup.media, target: setup.target, style: .energetic, bpm: setup.bpm)
+            let edl = Planner.plan(request)
+            for (index, moved) in edl.clips.enumerated() {
+                for destination in [0, edl.clips.count] where destination != index {
+                    let (result, _) = Planner.apply(.move(clipID: moved.id, toIndex: destination), to: edl, request: request)
+                    var expected = edl.clips.map(\.id)
+                    expected.remove(at: index)
+                    expected.insert(moved.id, at: min(destination, expected.count))
+                    let context = "\(setup.bpm) BPM \(setup.target) s, moving \(moved.id) to \(destination)"
+                    expectWellFormed(result, media: setup.media)
+                    #expect(result.clips.map(\.id) == expected, "\(context)")
+                    #expect(abs(result.duration - setup.target) <= Timing.lengthTolerance, "\(context): \(result.duration)")
+                    #expect(result.notices.isEmpty, "\(context)")
+                    let last = result.clips.last!
+                    let shortest = last.kind.isStill ? Timing.stillRange.lowerBound : Timing.minVideoClip
+                    #expect(last.duration >= shortest - 1e-6, "\(context): last clip \(last.duration) s")
+                }
+            }
+        }
+    }
+
+    @Test func theLastClipKeepsItsMinimumAfterARemoval() {
+        // Both videos are used almost to their ends, so after a removal the last clip can have
+        // less footage than the beats it spans. It is still never cut below half a second.
+        let media = Fixtures.mixedMedia(photos: 0, videoDurations: [25.5, 28.6])
+        for (target, bpm) in [(27.0, 104.0), (15, 132)] {
+            let request = Fixtures.request(media: media, target: target, style: .energetic, bpm: bpm)
+            let edl = Planner.plan(request)
+            for removed in edl.clips {
+                let (result, _) = Planner.apply(.remove(clipID: removed.id), to: edl, request: request)
+                let context = "\(bpm) BPM \(target) s, removing \(removed.id)"
+                expectWellFormed(result, media: media)
+                #expect(abs(result.duration - target) <= Timing.lengthTolerance, "\(context): \(result.duration)")
+                #expect(result.clips.last!.duration >= Timing.minVideoClip - 1e-6, "\(context): last clip \(result.clips.last!.duration) s")
+            }
+        }
+    }
+
+    @Test func newClipsKeepTheUsersOrder() {
+        // Calm clips cannot grow enough to make up for a removed one, so new moments come in.
+        // The user moved the last clip to the front; new moments join a clip next to them in
+        // time instead of pushing it from its place.
+        let request = Fixtures.request(media: Self.media, target: 30, style: .calm, bpm: 112, seed: 3)
+        let edl = Planner.plan(request)
+        let (moved, _) = Planner.apply(.move(clipID: edl.clips.last!.id, toIndex: 0), to: edl, request: request)
+        var added = 0
+        for removed in moved.clips.dropFirst() {
+            let (result, _) = Planner.apply(.remove(clipID: removed.id), to: moved, request: request)
+            let kept = moved.clips.map(\.id).filter { $0 != removed.id }
+            let ids = result.clips.map(\.id)
+            expectWellFormed(result, media: Self.media)
+            #expect(abs(result.duration - 30) <= Timing.lengthTolerance)
+            #expect(ids.filter(Set(kept).contains) == kept, "removing \(removed.id): \(ids)")
+            #expect(ids.first == kept.first, "removing \(removed.id): \(ids)")
+            added += ids.filter { !kept.contains($0) }.count
+        }
+        #expect(added > 0)
+    }
+
     @Test func anotherSongReTimesTheArrangement() {
         let request = Fixtures.request(media: Self.media, target: 45, style: .travel, bpm: 104, seed: 5)
         let edl = Planner.plan(request)

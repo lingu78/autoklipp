@@ -12,6 +12,8 @@ struct MediaSelectionView: View {
     @State private var importedIdentifiers: [String: String] = [:]
     /// Picker identifiers of selected items that could not be imported.
     @State private var failedIdentifiers: Set<String> = []
+    /// Deselected items by picker identifier, so picking one again reuses its copy and analysis.
+    @State private var setAside: [String: ImportedMedia] = [:]
 
     private var draft: ProjectDraft { model.draft }
 
@@ -39,7 +41,9 @@ struct MediaSelectionView: View {
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(progress.isRunning)
+                // An edit in the clip strip saves the project when it finishes; the media must not
+                // change under it.
+                .disabled(progress.isRunning || model.isEditing)
 
                 if progress.isRunning {
                     VStack(alignment: .leading, spacing: 6) {
@@ -98,8 +102,10 @@ struct MediaSelectionView: View {
                         selection = []
                         importedIdentifiers = [:]
                         failedIdentifiers = []
+                        setAside = [:]
                         model.startOver()
                     }
+                    .disabled(model.isEditing)
                 }
             }
         }
@@ -131,8 +137,17 @@ struct MediaSelectionView: View {
         // The copied file stays: a saved version of the project may still use it. AppModel
         // removes files no project uses when the project is saved or left.
         for (identifier, mediaID) in importedIdentifiers where !keep.contains(identifier) {
+            setAside[identifier] = draft.media.first { $0.id == mediaID }
             draft.media.removeAll { $0.id == mediaID }
             importedIdentifiers[identifier] = nil
+        }
+        // An item picked again gets its earlier copy back, unless that has been cleaned up since.
+        for identifier in wanted where importedIdentifiers[identifier] == nil {
+            guard let media = setAside.removeValue(forKey: identifier),
+                  FileManager.default.fileExists(atPath: media.url.path(percentEncoded: false))
+            else { continue }
+            importedIdentifiers[identifier] = media.id
+            draft.media.append(media)
         }
         // Each selected item that failed counts once, and a deselected one no longer counts.
         failedIdentifiers.formIntersection(keep)
