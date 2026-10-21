@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clipcore-linux:
+    name: ClipCore (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift --version
+      - name: Test the clip logic
+        run: swift test --package-path Packages/ClipCore
+
+  ios:
+    name: iOS app (simulator)
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      XCODE: /Applications/Xcode_26.6.app
+      SIMULATOR: iPhone 17
+      RUNTIME: "26.5"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+      - name: Check the string catalog
+        run: python3 scripts/check_strings.py
+      - name: Test the clip logic (macOS)
+        run: swift test --package-path Packages/ClipCore
+      - name: Start booting the simulator
+        # Booting a fresh simulator takes minutes; it runs while the app compiles.
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, os, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime, devices in data.items():
+              if runtime.endswith("iOS-" + os.environ["RUNTIME"].replace(".", "-")):
+                  for device in devices:
+                      if device["name"] == os.environ["SIMULATOR"]:
+                          print(device["udid"]); sys.exit()
+          sys.exit("simulator not found")')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+      - name: Build for testing
+        run: |
+          set +e
+          xcodebuild build-for-testing \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination "id=$UDID" > build.log 2>&1
+          status=$?
+          grep -E '(error:|BUILD (SUCCEEDED|FAILED)|TEST BUILD)' build.log | tail -n 100
+          if [ $status -ne 0 ]; then tail -n 80 build.log; fi
+          exit $status
+      - name: Fetch a public-domain portrait for the face test
+        # Official portraits in the public domain on Wikimedia Commons. If none can be fetched,
+        # the face part of the analysis tests is skipped.
+        run: |
+          for name in Abraham_Lincoln_O-77_matte_collodion_print.jpg Neil_Armstrong_pose.jpg; do
+            if curl -fsSL -A "AutoklippCI/1.0 (https://github.com/lingu78/autoklipp)" \
+                "https://commons.wikimedia.org/wiki/Special:FilePath/$name?width=600" -o "$RUNNER_TEMP/portrait.jpg"; then
+              file "$RUNNER_TEMP/portrait.jpg" && break
+            fi
+          done || true
+      - name: Wait for the simulator and grant Photos add access
+        run: |
+          xcrun simctl bootstatus "$UDID" -b > /dev/null
+          xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+      - name: Test
+        env:
+          TEST_RUNNER_AUTOKLIPP_CI: "1"
+          TEST_RUNNER_AUTOKLIPP_FACE_IMAGE: ${{ runner.temp }}/portrait.jpg
+        run: |
+          set +e
+          # One test at a time: the runner has three cores and the export tests are heavy.
+          xcodebuild test-without-building \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination "id=$UDID" \
+            -parallel-testing-enabled NO \
+            -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
+          status=$?
+          grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400
+          grep -E '^(.*\] )?[a-zA-Z ]+: .* (ms|s)$|BPM detected|took|after [0-9]|sharpness|shake|average clip' xcodebuild.log | grep -v '◇' | tail -n 60
+          if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
+          exit $status
+      - name: Build for device (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -n 20
+      - name: Keep test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: |
+            TestResults.xcresult
+            xcodebuild.log
+            build.log
+          retention-days: 7

@@ -1,0 +1,23 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.xcresult
+xcodebuild.log
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/ClipCore/.swiftpm/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+
+# Secrets (App Store Connect keys, certificates)
+*.p8
+*.p12
+*.mobileprovision
