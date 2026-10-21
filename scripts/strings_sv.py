@@ -141,6 +141,18 @@ STRINGS = {
     "The export was interrupted": "Exporten avbröts",
     "Autoklipp was in the background for too long. Keep the app open while the film is exported.":
         "Autoklipp var i bakgrunden för länge. Låt appen vara öppen medan filmen exporteras.",
+    "Your photos and videos become a finished film, cut to the beat of the music.": "Dina bilder och filmer blir en färdig film, klippt i takt med musiken.",
+    "How it works": "Så fungerar det",
+    "Pick photos and videos": "Välj bilder och filmer",
+    "Up to 200 at a time, straight from Photos.": "Upp till 200 åt gången, direkt från Bilder.",
+    "Choose length and style": "Välj längd och stil",
+    "From 15 seconds to 10 minutes, calm or full of energy.": "Från 15 sekunder till 10 minuter, lugnt eller fullt av energi.",
+    "Get a finished film": "Få en färdig film",
+    "Cut on the beat with transitions and music. Adjust it, then save or share.": "Klippt på taktslagen, med övergångar och musik. Justera den, spara eller dela.",
+    "Everything is processed on your iPhone. Nothing is uploaded.": "Allt bearbetas på din iPhone. Inget laddas upp.",
+    "Delete film": "Radera film",
+    "Delete this film?": "Radera filmen?",
+    "The film and its copies of your photos and videos are removed from Autoklipp. The originals in Photos stay.": "Filmen och dess kopior av dina bilder och filmer tas bort från Autoklipp. Originalen i Bilder finns kvar.",
 }
 
 INFO_PLIST = {

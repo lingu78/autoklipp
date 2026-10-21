@@ -351,6 +351,16 @@
         }
       }
     },
+    "Choose length and style": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Välj längd och stil"
+          }
+        }
+      }
+    },
     "Choose photos and videos": {
       "localizations": {
         "sv": {
@@ -441,6 +451,36 @@
         }
       }
     },
+    "Cut on the beat with transitions and music. Adjust it, then save or share.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klippt på taktslagen, med övergångar och musik. Justera den, spara eller dela."
+          }
+        }
+      }
+    },
+    "Delete film": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Radera film"
+          }
+        }
+      }
+    },
+    "Delete this film?": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Radera filmen?"
+          }
+        }
+      }
+    },
     "Describe your film (optional)": {
       "localizations": {
         "sv": {
@@ -487,6 +527,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Energisk"
+          }
+        }
+      }
+    },
+    "Everything is processed on your iPhone. Nothing is uploaded.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allt bearbetas på din iPhone. Inget laddas upp."
           }
         }
       }
@@ -587,6 +637,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Format"
+          }
+        }
+      }
+    },
+    "From 15 seconds to 10 minutes, calm or full of energy.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Från 15 sekunder till 10 minuter, lugnt eller fullt av energi."
+          }
+        }
+      }
+    },
+    "Get a finished film": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Få en färdig film"
+          }
+        }
+      }
+    },
+    "How it works": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Så fungerar det"
           }
         }
       }
@@ -791,6 +871,16 @@
         }
       }
     },
+    "Pick photos and videos": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Välj bilder och filmer"
+          }
+        }
+      }
+    },
     "Pick photos and videos, choose a length and get a finished film with music.": {
       "localizations": {
         "sv": {
@@ -981,6 +1071,16 @@
         }
       }
     },
+    "The film and its copies of your photos and videos are removed from Autoklipp. The originals in Photos stay.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filmen och dess kopior av dina bilder och filmer tas bort från Autoklipp. Originalen i Bilder finns kvar."
+          }
+        }
+      }
+    },
     "The film could not be exported. Try again.": {
       "localizations": {
         "sv": {
@@ -1091,6 +1191,16 @@
         }
       }
     },
+    "Up to 200 at a time, straight from Photos.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upp till 200 åt gången, direkt från Bilder."
+          }
+        }
+      }
+    },
     "Use your own audio file…": {
       "localizations": {
         "sv": {
@@ -1157,6 +1267,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dina bilder och filmer räcker till ungefär %@. Filmen blir kortare om du inte lägger till mer."
+          }
+        }
+      }
+    },
+    "Your photos and videos become a finished film, cut to the beat of the music.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dina bilder och filmer blir en färdig film, klippt i takt med musiken."
           }
         }
       }
