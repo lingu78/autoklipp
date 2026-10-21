@@ -44,6 +44,12 @@ struct GenerationInput: Sendable {
     var directorPlan: DirectorPlan?
     /// Let the director's suggested style replace the current one.
     var styleFollowsDirector = false
+    /// The user has not picked a song, so a new style brings its own.
+    var songFollowsStyle = false
+    /// The user has not written or removed a title, so the director's title is used.
+    var titleFollowsDirector = false
+    /// The user's clip order, kept as it is and only re-timed to the music.
+    var arrangement: [EDLClip]?
 }
 
 extension GenerationInput {
@@ -64,8 +70,23 @@ extension GenerationInput {
             endCredit: draft.endCredit,
             instruction: draft.instructionInEffect,
             directorPlan: draft.directorPlan,
-            styleFollowsDirector: !draft.styleChosenByUser
+            styleFollowsDirector: !draft.styleChosenByUser,
+            songFollowsStyle: !draft.musicChosenByUser,
+            titleFollowsDirector: !draft.titleChosenByUser,
+            arrangement: draft.userArrangement
         )
+    }
+
+    /// Takes the director's suggestions the user has left open: the style, with its song until
+    /// the user picks one (as `ProjectDraft.select(style:)` does), and the title.
+    mutating func follow(_ plan: DirectorPlan?) {
+        if styleFollowsDirector, let suggested = plan?.suggestedStyle, suggested != style {
+            style = suggested
+            if songFollowsStyle, let suggestion = MusicCatalog.suggestion(for: suggested)?.choice { song = suggestion }
+            // The clips carry the old style's transitions.
+            arrangement = nil
+        }
+        if titleFollowsDirector { title = plan?.title ?? "" }
     }
 }
 
@@ -80,6 +101,8 @@ struct GenerationOutput: Sendable {
     var style: StyleID
     /// The description could not be followed; the film was made without it.
     var directorFailed = false
+    /// The user's clip order was kept.
+    var keptArrangement = false
 }
 
 /// Runs analysis, planning and composition building, reporting each step.
@@ -106,6 +129,7 @@ enum FilmGenerator {
             musicTrackID: input.song?.id,
             seed: input.seed,
             lockedClips: input.lockedClips,
+            arrangement: input.arrangement,
             exclusions: input.exclusions,
             director: input.directorPlan,
             title: input.title,
@@ -128,6 +152,8 @@ enum FilmGenerator {
         var directorFailed = false
         if !input.instruction.isEmpty, input.directorPlan == nil {
             await onProgress(.directing, 0)
+            // A new description chooses the clips again.
+            input.arrangement = nil
             do {
                 input.directorPlan = try await FilmDirector.plan(
                     instruction: input.instruction, media: input.media.map(\.item), analyses: input.analyses
@@ -140,10 +166,8 @@ enum FilmGenerator {
             }
             if input.directorPlan == nil { directorFailed = true }
         }
-        if let plan = input.directorPlan {
-            if input.styleFollowsDirector, let style = plan.suggestedStyle { input.style = style }
-            if input.title.isEmpty, let title = plan.title { input.title = title }
-        }
+        // Before planning, so the clips are timed to the song the film will have.
+        input.follow(input.directorPlan)
 
         await onProgress(.selecting, 0)
         try Task.checkCancellation()
@@ -155,7 +179,7 @@ enum FilmGenerator {
         let built = try await build(edl, media: input.media, song: input.song, settings: settings)
         return GenerationOutput(
             edl: edl, built: built, analyses: input.analyses, directorPlan: input.directorPlan,
-            style: input.style, directorFailed: directorFailed
+            style: input.style, directorFailed: directorFailed, keptArrangement: input.arrangement != nil
         )
     }
 

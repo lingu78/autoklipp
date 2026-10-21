@@ -116,14 +116,20 @@ enum ImageMetrics {
 
     /// Camera shake 0...1 from camera displacements between consecutive samples (as fractions
     /// of the frame width): smooth pans move steadily, handheld jitter changes direction.
-    static func shake(displacements: [CGVector]) -> [Double] {
-        guard !displacements.isEmpty else { return [] }
-        return displacements.indices.map { index in
-            let current = displacements[index]
-            let neighbours = [index - 1, index + 1].filter { displacements.indices.contains($0) }.map { displacements[$0] }
+    /// A displacement that could not be measured (nil: the first sample, or next to a missing
+    /// frame) is never compared against; such a sample takes the value of a measured neighbour.
+    static func shake(displacements: [CGVector?]) -> [Double] {
+        let measured = displacements.indices.map { index -> Double? in
+            guard let current = displacements[index] else { return nil }
+            let neighbours = [index - 1, index + 1].filter { displacements.indices.contains($0) }.compactMap { displacements[$0] }
             guard !neighbours.isEmpty else { return 0 }
             let change = neighbours.map { hypot(Double(current.dx - $0.dx), Double(current.dy - $0.dy)) }.max() ?? 0
             return min(1, change * 12)
+        }
+        return measured.indices.map { index -> Double in
+            if let value = measured[index] { return value }
+            let neighbour = [index + 1, index - 1].filter { measured.indices.contains($0) }.compactMap { measured[$0] }.first
+            return neighbour ?? 0
         }
     }
 

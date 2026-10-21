@@ -281,6 +281,16 @@
         }
       }
     },
+    "Autoklipp was in the background for too long. Keep the app open while the film is exported.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autoklipp var i bakgrunden för länge. Låt appen vara öppen medan filmen exporteras."
+          }
+        }
+      }
+    },
     "Back": {
       "localizations": {
         "sv": {
@@ -957,6 +967,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Filen gick inte att läsa. Låtar från Apple Music är skyddade och kan inte användas."
+          }
+        }
+      }
+    },
+    "The export was interrupted": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exporten avbröts"
+          }
+        }
+      }
+    },
+    "The film could not be exported. Try again.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filmen gick inte att exportera. Försök igen."
+          }
+        }
+      }
+    },
+    "The film could not be made. A photo or video may be missing.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filmen gick inte att göra. En bild eller film kan saknas."
           }
         }
       }

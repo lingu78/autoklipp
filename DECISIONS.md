@@ -61,6 +61,9 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Trasiga eller oläsbara filer hoppas över och räknas;** användaren ser "N objekt kunde inte
   läsas och hoppades över". iCloud-nedladdning sker i pickerns laddning, och förloppet visas.
   (2026-10-20, fas 1)
+- **Avmarkerade objekt tas bort ur filmen men kopian ligger kvar** tills projektet sparas eller lämnas, eftersom en redan sparad version kan använda den; oanvända kopior städas då bort. (2026-10-21, granskning)
+- **"N objekt kunde inte läsas" gäller det aktuella urvalet:** varje trasigt objekt räknas en gång, och avmarkeras det försvinner det ur antalet. Misslyckade objekt försöks igen när urvalet ändras, så ett iCloud-objekt som laddas ned senare kommer med. (2026-10-21, granskning)
+- **Importförloppet** summerar förloppet för de objekt som laddas samtidigt. Lämnar användaren vyn mitt i en import avbryts den, och en kopia som inte kunde flyttas in i projektet tas bort. (2026-10-21, granskning)
 
 ## 4. Klipplogik (ClipCore)
 
@@ -87,6 +90,9 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Fas 1 använder samma motor som de senare faserna** i stället för en tillfällig "jämn
   klipplängd"-variant: utan analys får alla segment samma neutrala poäng, och stilen ger
   jämna klipplängder (t.ex. Resa: 2 s vid 120 BPM). (2026-10-20, fas 1)
+- **Sista klippet** kapas vid mållängden men ska ändå visas inom sina gränser (stillbild 1,5–4 s, film minst 0,5 s). Snittet före flyttas då ett taktslag i taget genom att tidigare klipp kortas eller förlängs; räcker inte det tas ett sista moment som planeraren själv lagt till bort. (2026-10-21, granskning)
+- **Material som inte räcker:** nya moment tas bara ur material som inget klipp redan spelar i sin nuvarande längd, och ett nytt moment får aldrig tvinga ett befintligt klipp över sin hårda gräns. Klipp saktas alltså aldrig ned för att fylla ut filmen. (2026-10-21, granskning)
+- **Längdvarningen** räknar stillbilder med de hela taktslag de får vara i den valda låten (t.ex. 6 slag = 3,46 s vid 104 BPM) i stället för 4 s. (2026-10-21, granskning)
 
 ## 4b. Analys (fas 2)
 
@@ -121,6 +127,9 @@ Format: **Beslut** – motivering – (datum, fas).
   Ansiktsprioriteringen testas dels i ClipCore med injicerade ansiktsvärden, dels i CI med ett
   porträtt i public domain som runnern laddar ned (utvecklingsmiljön når inte Wikimedia); finns
   bilden inte hoppas just den delen över. (2026-10-20, fas 2)
+- **Filmanalysen strömmar:** rutorna hämtas 16 åt gången och varje 0,5 s-segment mäts direkt i tidsordning; bara föregående rutas gråkopia och de tre rutor som etiketterna behöver sparas. Minnet är därmed detsamma oavsett filmens längd, och avbryt stoppar analysen inom en ruta. (2026-10-21, granskning)
+- **Kameraskak räknas bara mot förflyttningar som faktiskt har mätts.** Första segmentet och segment intill en ruta som saknas får grannens skakvärde, så att början av en jämn panorering inte räknas som skak. (2026-10-21, granskning)
+- **Leenden poängsätts inte separat** (Klipplogik 1: "ansikten/leenden"). Visions Swift-API i iOS 26 har ingen leendedetektor; antal ansikten och deras fångstkvalitet (`DetectFaceCaptureQualityRequest`, som bl.a. väger in uttryck) får stå för båda. (2026-10-21, granskning)
 
 ## 5. Rendering
 
@@ -149,6 +158,12 @@ Format: **Beslut** – motivering – (datum, fas).
   för källbilder och utdata. Utan det kopierade Core Image varje bildruta via CPU:n: i simulatorn
   1,3 s per 1080p-bildruta mot 25 ms med delade buffertar. En 60 s film exporteras nu på under en
   minut i CI. Ett test (`ExportSpeedTests`) vakar över detta. (2026-10-20, fas 1)
+- **Övergångar intill filmklipp utan extra material:** kompositionen håller klippets första respektive sista bildruta som frusen bild över halva övergången, i stället för att lämna spåret tomt (det gav en halv toning mot svart). (2026-10-21, granskning)
+- **En video som spelas något långsammare eller snabbare (högst 5 %)** får sitt eget ljud tidsskalat lika mycket som bilden, så att ljud och bild håller synk; tonhöjden bevaras (`AVAudioTimePitchAlgorithm.spectral`). (2026-10-21, granskning)
+- **Alla spår kapas vid filmens längd** och media läggs aldrig in före ett spårs nuvarande slut, så att avrundning till 1/600 s inte kan göra kompositionen längre än videokompositionens instruktion. Börjar en videos ljud senare än bilden behålls förskjutningen. (2026-10-21, granskning)
+- **Kompositören byter till CPU-rendering redan när appen slutar vara aktiv** (`willResignActive`) och tillbaka vid `didBecomeActive`, utöver scenePhase, som rapporterar bakgrund först när appen redan är där. (2026-10-21, granskning)
+- **Speglade videor** (negativ determinant i `preferredTransform`) får speglade orienteringar i stället för att tolkas som en rotation. (2026-10-21, granskning)
+- **Filmen byggs alltid med låten som klipplistan planerades på** (klipplistans `music.trackID`; den egna låten när id:t stämmer), även om en annan låt valts sedan, så att klippen ligger på rätt taktslag i export, öppnade projekt och klippremsan. (2026-10-21, granskning)
 
 ## 6. Musik
 
@@ -201,6 +216,7 @@ Format: **Beslut** – motivering – (datum, fas).
   klipp och glidande övergångar, varmt ljus) och Filmisk (2–6 slag, toning via svart, dämpade färger
   och vinjett). Ett test kontrollerar att tempo, övergångar och färgbehandling verkligen skiljer
   sig åt. (2026-10-20, fas 3)
+- **Egna låtar analyseras högst 15 minuter** (en film är högst 10 min), så att en lång mix inte fyller minnet; en längre fil används från början. (2026-10-21, granskning)
 
 ## 6c. Justering och projekt (fas 4)
 
@@ -229,6 +245,14 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Titel och eftertext (F14)** skrivs i ett ark och ritas av kompositören som vit text med
   skugga, centrerad, med halvsekundstoning: titeln de första ~3 s, eftertexten de sista.
   Texten ändrar inte klipplistans tajming. (2026-10-20, fas 4)
+- **Ta bort i klippremsan:** bara klippet vars eget material togs bort försvinner. Grannklipp ur samma film behålls och får växa fram till exakt kanten av det borttagna avsnittet, aldrig in i det. (2026-10-21, granskning)
+- **Flytta och ta bort tajmar bara om det som ändrades:** klippen börjar från sina tidigare taktslagslängder, förlängs inom stilens gränser innan nya moment läggs till, och kortas innan något tas bort. (2026-10-21, granskning)
+- **Låsta klipp tas aldrig bort.** Får de inte plats i mållängden blir filmen så mycket längre (±1 s-kravet i F2 får vika, eftersom låsta klipp alltid ska vara kvar). (2026-10-21, granskning)
+- **Byt stil- och Byt musik-arken** ändrar projektet direkt, men Avbryt och nedsvepning återställer stil, musik, egen låt och originalljud. Medan en egen låt analyseras kan arket inte stängas. (2026-10-21, granskning)
+- **Användarens ordning i klippremsan behålls när bara musiken eller ljudet byts;** klippen tajmas bara om. Byte av stil, en ny version, ändrat material eller en ny beskrivning gör urvalet på nytt. (2026-10-21, granskning)
+- **En ny version öppnas ovanpå förhandsvisningen.** Avbryts eller misslyckas den kommer användaren tillbaka till filmen som visades, med dess stil, musik och frö. (2026-10-21, granskning)
+- **Ändringar i klippremsan och av titel/eftertext bygger alltid på den senaste ändringen,** och bara den nyaste förhandsvisningen visas. Under tiden är remsan (även VoiceOver-åtgärderna), knapparna under spelaren och titelknappen avstängda. (2026-10-21, granskning)
+- **Kopierade filer städas:** ett utkast som aldrig sparats tas bort vid Ny film, när ett annat projekt öppnas och vid nästa start; filer som varken utkastet eller den sparade kopian använder tas bort när projektet sparas, öppnas eller lämnas. Miniatyren i projektlistan följer filmens första klipp. (2026-10-21, granskning)
 
 ## 6d. Apple Intelligence som regissör (fas 5)
 
@@ -246,7 +270,7 @@ Format: **Beslut** – motivering – (datum, fas).
   bästa övriga materialet. (2026-10-20, fas 5)
 - **Långt material delas i omgångar** som ryms i modellens kontextfönster (`contextSize` minus
   plats för svaret). Varje rad räknas med `tokenCount(for:)` där det finns (iOS 26.4+), annars
-  uppskattas fyra tecken per token. Omgångarnas svar slås ihop i kronologisk ordning; stilen
+  uppskattas en och en halv tecken per token (se nedan). Omgångarnas svar slås ihop i kronologisk ordning; stilen
   avgörs med majoritet. (2026-10-20, fas 5)
 - **Fritextfältet visas bara när modellen är tillgänglig och stöder språket**
   (`SystemLanguageModel.default.isAvailable` och `supportsLocale()`), kontrollerat vid start och när
@@ -262,11 +286,17 @@ Format: **Beslut** – motivering – (datum, fas).
   plan följs (barnklipp i majoritet). Testet som frågar den riktiga modellen ("only pictures with
   the children") hoppar över sig självt i en simulator där modellen inte kan köras och körs på en
   iPhone med Apple Intelligence. (2026-10-20, fas 5)
+- **Omgångarnas storlek:** utan `tokenCount` (iOS före 26.4) uppskattas en och en halv tecken per token, eftersom datum, koordinater och poäng blir många korta token. Varje klipp får 10 token i svaret och 1 000 token hålls fria för svarsformatet. Blir en omgång ändå för stor delas den på mitten och frågas igen. (2026-10-21, granskning)
+- **En omgång som misslyckas** (t.ex. guardrail) tappar bara sina egna klipp; planen byggs av de omgångar som lyckades, och beskrivningen räknas som misslyckad först när alla omgångar misslyckats. Varje svar får bara använda id:n från sin egen omgång. (2026-10-21, granskning)
+- **Regissörens urval förlängs först** och får fler moment ur valda filmer innan annat material fyller på; påfyllnaden kommer i få, långa klipp. Med 10 av 30 bilder och 60 s blir valda klipp i majoritet. (2026-10-21, granskning)
+- **Planen återanvänds bara när beskrivningen och materialet är exakt desamma;** tillagt material ger en ny plan. När regissören föreslår en stil och användaren inte valt låt byts låten till stilens förslag före planeringen, så att filmen, projektet och exporten har samma låt. (2026-10-21, granskning)
+- **Regissörens titelförslag används tills användaren själv skrivit eller tagit bort en titel;** en ny beskrivning ger då en ny titel. (2026-10-21, granskning)
 
 ## 7. Spara och dela
 
 - **Sparar till Bilder med "endast lägga till"-behörighet** (`NSPhotoLibraryAddUsageDescription`);
   appen läser aldrig biblioteket. Delning via systemets delningsmeny (`ShareLink`). (2026-10-20, fas 1)
+- **Exporten har en utgångshanterare:** tar bakgrundstiden slut avbryts exporten, bakgrundsuppgiften avslutas (annars avslutar iOS appen) och användaren får en notis. Bara den senaste exporten ligger kvar i den tillfälliga mappen. (2026-10-21, granskning)
 
 ## 8. Språk och tillgänglighet
 
@@ -278,6 +308,8 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Systemtypsnitt och standardkontroller** så att Dynamic Type och VoiceOver fungerar; ikoner har
   dolts för VoiceOver där texten redan säger samma sak, och valda alternativ har egenskapen
   "vald". (2026-10-20, fas 1)
+- **Fel visas som begripliga, översatta meddelanden** i stället för tekniska felkoder. (2026-10-21, granskning)
+- **Notisen om oläsbara objekt har orange ikon men text i vanlig textfärg:** orange text på vitt når bara cirka 2,2:1 (kravet är 4,5:1). (2026-10-21, granskning)
 
 ## 9. Öppna frågor (från SPEC.md)
 

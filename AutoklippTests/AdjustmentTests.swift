@@ -20,9 +20,9 @@ struct AdjustmentTests {
         model.draft.media = media
         model.draft.lengthChoice = .preset(60)
         model.draft.seed = 21
-        let output = try await FilmGenerator.generate(GenerationInput(draft: model.draft), settings: .preview(.portrait)) { _, _ in }
-        model.draft.analyses = output.analyses
-        model.draft.edl = output.edl
+        let input = GenerationInput(draft: model.draft)
+        let output = try await FilmGenerator.generate(input, settings: .preview(.portrait)) { _, _ in }
+        model.draft.adopt(output, from: input)
         model.preview = PreviewSession(edl: output.edl, built: output.built)
         await PreviewSession.waitUntilReady(model.preview!.player.currentItem!)
         return model
@@ -60,6 +60,22 @@ struct AdjustmentTests {
         #expect(session.player.currentItem?.status == .readyToPlay)
         let duration = try await session.built.composition.load(.duration).seconds
         #expect(abs(duration - session.edl.duration) < 0.05)
+        #expect(model.draft.edl == session.edl)
+        #expect(!model.isEditing)
+
+        // Another song keeps the user's order; the clips are only re-timed to it (F11).
+        await model.apply(.setLocked(clipID: moved.id, true))
+        let arranged = session.edl.clips.map(\.id)
+        let song = try #require(MusicCatalog.track(id: "horisont"))
+        model.draft.select(songID: song.id)
+        let resung = FilmGenerator.plan(GenerationInput(draft: model.draft))
+        #expect(resung.music?.trackID == song.id)
+        #expect(resung.clips.contains { $0.id == moved.id })
+        let kept = resung.clips.map(\.id).filter(Set(arranged).contains)
+        #expect(kept == arranged.filter(Set(kept).contains))
+        // A new style draws the film again.
+        model.draft.choose(style: .cinematic)
+        #expect(model.draft.userArrangement == nil)
 
         // A new version keeps the locked clip and leaves out the removed one (F12).
         model.draft.seed = 777
@@ -74,6 +90,85 @@ struct AdjustmentTests {
         let elapsed = try #require(model.lastEditDuration)
         print("\(what): new preview after \(elapsed)")
         #expect(elapsed < .seconds(3), "\(what) took \(elapsed)")
+    }
+
+    /// Export and preview use the song the clip list was timed to, not one picked since.
+    @Test func aFilmIsBuiltWithTheSongItWasTimedTo() throws {
+        let draft = ProjectDraft()
+        let timed = try #require(draft.song)
+        let film = EditDecisionList(
+            targetDuration: 15, duration: 15, style: .travel, seed: 1, music: MusicCue(trackID: timed.id, segments: []), clips: []
+        )
+        draft.select(songID: "morgondimma")
+        #expect(draft.song?.id == "morgondimma")
+        #expect(draft.song(for: film)?.id == timed.id)
+
+        let info = TrackInfo(id: "custom-1", duration: 30, bpm: 100, beats: [0, 0.6])
+        draft.customSong = SongChoice(id: "custom-1", title: "Own", url: URL(filePath: "/dev/null"), info: info, isCustom: true)
+        var own = film
+        own.music = MusicCue(trackID: "custom-1", segments: [])
+        #expect(draft.song(for: own)?.id == "custom-1")
+        own.music = nil
+        #expect(draft.song(for: own) == nil, "a film planned without music stays without music")
+    }
+
+    /// Cancelling a Change sheet leaves the draft as it was.
+    @Test func aCancelledChangeIsUndone() {
+        let draft = ProjectDraft()
+        let before = draft.styleAndMusic
+        draft.choose(style: .energetic)
+        draft.select(songID: "hoppborg")
+        draft.originalAudio = true
+        #expect(draft.styleAndMusic != before)
+        draft.restore(before)
+        #expect(draft.styleAndMusic == before)
+        #expect(draft.style == .travel && !draft.styleChosenByUser && !draft.musicChosenByUser)
+    }
+
+    /// Copies nobody uses are deleted; files a saved film uses are kept.
+    @Test func unusedCopiesAreRemoved() async throws {
+        let model = AppModel(inMemory: true)
+
+        // A film that was never saved loses its folder when the user starts another one.
+        let abandoned = model.draft.storage
+        try abandoned.prepare()
+        try Data([1]).write(to: abandoned.mediaDirectory.appending(path: "a.jpg"))
+        model.newProject()
+        try await waitUntil { !exists(abandoned.directory) }
+
+        // Saving drops what the film no longer uses.
+        let draft = model.draft
+        let storage = draft.storage
+        defer { storage.removeAll() }
+        try storage.prepare()
+        let used = storage.mediaDirectory.appending(path: "used.jpg")
+        let unused = storage.mediaDirectory.appending(path: "unused.jpg")
+        for url in [used, unused] { try Data([1]).write(to: url) }
+        draft.media = [ImportedMedia(item: MediaItem(id: "used", kind: .photo), url: used)]
+        draft.edl = EditDecisionList(targetDuration: 15, duration: 15, style: .travel, seed: 1, clips: [])
+        #expect(AppModel.unusedFiles(in: storage, keeping: draft.fileNames).map(\.lastPathComponent) == ["unused.jpg"])
+        model.save()
+        try await waitUntil { !exists(unused) }
+
+        // Leaving a saved film keeps the files it uses, but not ones added and never saved.
+        let extra = storage.mediaDirectory.appending(path: "extra.jpg")
+        try Data([1]).write(to: extra)
+        model.newProject()
+        try await waitUntil { !exists(extra) }
+        #expect(exists(used))
+    }
+
+    private func exists(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        var attempts = 0
+        while !condition(), attempts < 300 {
+            try await Task.sleep(for: .milliseconds(10))
+            attempts += 1
+        }
+        #expect(condition())
     }
 
     @Test(.timeLimit(.minutes(10)))

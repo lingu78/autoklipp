@@ -12,6 +12,7 @@ struct ExportView: View {
     @State private var phase: Phase = .choosing
     @State private var progress = 0.0
     @State private var exportTask: Task<Void, Never>?
+    @State private var saving = false
     @State private var saved = false
     @State private var message: String?
 
@@ -69,7 +70,7 @@ struct ExportView: View {
                                 systemImage: saved ? "checkmark.circle.fill" : "photo.badge.plus"
                             )
                         }
-                        .disabled(saved)
+                        .disabled(saved || saving)
                         ShareLink(item: url) {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
@@ -102,36 +103,48 @@ struct ExportView: View {
         saved = false
         let edl = edl
         let media = draft.media
-        let song = draft.song
+        // The song the clips were timed to, as in the preview, even if another was picked since.
+        let song = draft.song(for: edl)
         let settings = RenderSettings(format: format, resolution: resolution)
         let folder = draft.storage.exportDirectory
         exportTask = Task {
             await FinishNotifier.requestPermissionIfNeeded()
+            // Only the newest export is kept; earlier ones have been saved or shared by now.
+            try? FileManager.default.removeItem(at: folder)
+            let url = folder.appending(path: "Autoklipp-\(Int(Date().timeIntervalSince1970)).mp4")
             do {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                let url = folder.appending(path: "Autoklipp-\(Int(Date().timeIntervalSince1970)).mp4")
                 try await FinishNotifier.runAllowingBackground("Export") {
                     let built = try await FilmGenerator.build(edl, media: media, song: song, settings: settings)
                     try await VideoExporter.export(built, resolution: settings.resolution, to: url) { value in
                         Task { @MainActor in progress = value }
                     }
+                    // Posted while the background time lasts, so it is not lost when the app is suspended.
+                    await FinishNotifier.notifyIfInBackground(
+                        title: String(localized: "Your film is ready"),
+                        body: String(localized: "Open Autoklipp to save or share it.")
+                    )
                 }
                 try Task.checkCancellation()
                 phase = .finished(url)
-                FinishNotifier.notifyIfInBackground(
-                    title: String(localized: "Your film is ready"),
-                    body: String(localized: "Open Autoklipp to save or share it.")
-                )
             } catch is CancellationError {
+                try? FileManager.default.removeItem(at: url)
                 phase = .choosing
             } catch {
+                try? FileManager.default.removeItem(at: url)
                 phase = .choosing
-                message = Task.isCancelled ? nil : error.localizedDescription
+                if !Task.isCancelled {
+                    // The technical reason means nothing to the user.
+                    message = (error as? BackgroundTimeExpired)?.errorDescription
+                        ?? String(localized: "The film could not be exported. Try again.")
+                }
             }
         }
     }
 
     private func save(_ url: URL) async {
+        saving = true
+        defer { saving = false }
         do {
             try await PhotoLibrarySaver.save(videoAt: url)
             saved = true

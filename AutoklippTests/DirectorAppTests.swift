@@ -70,6 +70,57 @@ struct DirectorAppTests {
         #expect(plan?.title == "Barnen i sommar")
     }
 
+    /// A style the director suggests brings its song while the user has picked none, so the film
+    /// is timed to the song the project then has (and exports with).
+    @Test(.timeLimit(.minutes(5)))
+    func aSuggestedStyleBringsItsSong() async throws {
+        let (media, analyses) = Self.material()
+        let draft = ProjectDraft()
+        draft.media = media
+        draft.analyses = analyses
+        draft.lengthChoice = .preset(20)
+        draft.directorPlan = DirectorPlan(mediaIDs: media.map(\.id), suggestedStyle: .calm, title: "Barnen i sommar")
+        let calmSong = try #require(MusicCatalog.suggestion(for: .calm))
+        #expect(calmSong.id != draft.musicTrackID)
+
+        let input = GenerationInput(draft: draft)
+        let output = try await FilmGenerator.generate(input, settings: .preview(.portrait)) { _, _ in }
+        draft.adopt(output, from: input)
+        #expect(output.style == .calm)
+        #expect(output.edl.music?.trackID == calmSong.id)
+        #expect(draft.musicTrackID == calmSong.id)
+        #expect(draft.song(for: output.edl)?.id == draft.song?.id)
+        #expect(draft.title == "Barnen i sommar")
+
+        // A song or a title the user chose stays; a removed title does not come back.
+        var chosen = GenerationInput(draft: draft)
+        chosen.style = .travel
+        chosen.song = MusicCatalog.track(id: "hoppborg")?.choice
+        chosen.songFollowsStyle = false
+        chosen.titleFollowsDirector = false
+        chosen.title = ""
+        chosen.follow(draft.directorPlan)
+        #expect(chosen.style == .calm)
+        #expect(chosen.song?.id == "hoppborg")
+        #expect(chosen.title.isEmpty)
+    }
+
+    /// New material makes the director look again (6d: the plan is reused only for the same
+    /// description and material).
+    @Test func aDirectorPlanIsForgottenWhenMaterialIsAdded() {
+        let (media, _) = Self.material()
+        let draft = ProjectDraft()
+        draft.media = Array(media.prefix(20))
+        draft.directorPlan = DirectorPlan(mediaIDs: ["p0", "p3"])
+        draft.directorInstruction = draft.instructionInEffect
+        draft.materialIDs = Set(draft.media.map(\.id))
+        draft.forgetDirectorPlanIfStale()
+        #expect(draft.directorPlan != nil)
+        draft.media = media
+        draft.forgetDirectorPlanIfStale()
+        #expect(draft.directorPlan == nil)
+    }
+
     /// With a description the film is always made: without the model, when it fails, or with
     /// its plan.
     @Test(.timeLimit(.minutes(5)))

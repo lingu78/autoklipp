@@ -1,6 +1,8 @@
 import AVFoundation
 import ClipCore
 import CoreImage
+import CoreMedia
+import CoreVideo
 import Foundation
 import Testing
 
@@ -82,6 +84,11 @@ struct RenderingTests {
         #expect(CGImagePropertyOrientation(videoTransform: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1080, ty: 0)) == .right)
         #expect(CGImagePropertyOrientation(videoTransform: CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 0, ty: 0)) == .down)
         #expect(CGImagePropertyOrientation(videoTransform: CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 0)) == .left)
+        // Mirrored videos are flipped, not turned upside down.
+        #expect(CGImagePropertyOrientation(videoTransform: CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: 1920, ty: 0)) == .upMirrored)
+        #expect(CGImagePropertyOrientation(videoTransform: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: 1080)) == .downMirrored)
+        #expect(CGImagePropertyOrientation(videoTransform: CGAffineTransform(a: 0, b: 1, c: 1, d: 0, tx: 0, ty: 0)) == .leftMirrored)
+        #expect(CGImagePropertyOrientation(videoTransform: CGAffineTransform(a: 0, b: -1, c: -1, d: 0, tx: 1080, ty: 1920)) == .rightMirrored)
     }
 
     @Test func renderSizes() {
@@ -104,6 +111,117 @@ struct RenderingTests {
         let built = try await FilmGenerator.build(edl, media: media, song: song, settings: .preview(.square))
         let duration = try await built.composition.load(.duration).seconds
         #expect(abs(duration - edl.duration) < 0.05, "composition \(duration) vs list \(edl.duration)")
+    }
+
+    @Test func compositionEndsExactlyWithTheFilmWhenTheSongLoops() async throws {
+        // At 240 s the looped pieces of this song, each rounded to 1/600 s, add up to one tick
+        // more than the film: past the end of the video composition's only instruction.
+        let song = try #require(MusicCatalog.track(id: "sommarvind")?.choice)
+        let folder = try TestMedia.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "still.png")
+        try TestMedia.solidImage(to: url, color: TestMedia.RGB.palette[0])
+        let item = MediaItem(id: "still", kind: .photo, pixelWidth: 400, pixelHeight: 300)
+        let length = 240.0
+        let layout = MusicLayout.make(track: song.info, filmDuration: length)
+        #expect(layout.segments.count > 1, "the song should loop")
+        let edl = EditDecisionList(
+            targetDuration: length, duration: length, style: .calm, seed: 1,
+            music: MusicCue(trackID: song.id, segments: layout.segments),
+            clips: [
+                EDLClip(
+                    id: "still", mediaID: "still", kind: .photo, sourceStart: 0, sourceDuration: length,
+                    timelineStart: 0, duration: length, beats: 1
+                )
+            ]
+        )
+        let built = try await FilmGenerator.build(edl, media: [ImportedMedia(item: item, url: url)], song: song, settings: .preview(.square))
+        let duration = try await built.composition.load(.duration)
+        #expect(CMTimeCompare(duration, CompositionBuilder.time(length)) == 0, "composition \(duration.value)/\(duration.timescale)")
+        let instruction = try #require(built.videoComposition.instructions.last)
+        #expect(CMTimeCompare(instruction.timeRange.end, duration) >= 0)
+    }
+
+    /// Two videos, each used whole, so neither has footage to spare for the crossfade between them.
+    func twoWholeVideos(in folder: URL) async throws -> BuiltComposition {
+        var media: [String: ImportedMedia] = [:]
+        var clips: [EDLClip] = []
+        for (index, color) in [TestMedia.RGB.palette[3], TestMedia.RGB.palette[5]].enumerated() {
+            let id = "video-\(index)"
+            let url = folder.appending(path: "\(id).mov")
+            try await TestMedia.writeVideo(to: url, duration: 3, width: 640, height: 360, color: color, date: nil)
+            let item = MediaItem(id: id, kind: .video, duration: 3, pixelWidth: 640, pixelHeight: 360)
+            media[id] = ImportedMedia(item: item, url: url)
+            clips.append(
+                EDLClip(
+                    id: id, mediaID: id, kind: .video, sourceStart: 0, sourceDuration: 3,
+                    timelineStart: Double(index) * 3, duration: 3, beats: 4,
+                    transitionIn: index == 0 ? .cut : ClipTransition(kind: .crossfade, duration: 1)
+                )
+            )
+        }
+        let edl = EditDecisionList(targetDuration: 6, duration: 6, style: .calm, seed: 1, clips: clips)
+        let settings = RenderSettings(format: .landscape, previewShortSide: 180)
+        return try await CompositionBuilder.build(RenderInputs(edl: edl, media: media, musicURL: nil, settings: settings))
+    }
+
+    @Test(.timeLimit(.minutes(2)))
+    func crossfadeHoldsTheEdgeFramesOfVideosWithoutSpareFootage() async throws {
+        let folder = try TestMedia.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let built = try await twoWholeVideos(in: folder)
+
+        let reader = try AVAssetReader(asset: built.composition)
+        let output = AVAssetReaderVideoCompositionOutput(
+            videoTracks: try await built.composition.loadTracks(withMediaType: .video),
+            videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        )
+        output.videoComposition = built.videoComposition
+        reader.add(output)
+        reader.startReading()
+        var alone: [Double] = []
+        var blended: [(time: Double, brightness: Double)] = []
+        while let sample = output.copyNextSampleBuffer() {
+            let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+            // The crossfade runs from 2.5 to 3.5 s; each clip shows alone at 1 and 5 s.
+            let inTransition = time > 2.5 && time < 3.5
+            let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
+            guard inTransition || isAlone, let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+            let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
+            if inTransition { blended.append((time, brightness)) } else { alone.append(brightness) }
+        }
+        #expect(reader.status == .completed)
+        #expect(alone.count == 2)
+        #expect(blended.count >= 25)
+        let darkest = try #require(alone.min())
+        for frame in blended {
+            // With an empty lane one side of the blend was black: half dark at the cut.
+            #expect(frame.brightness > 0.85 * darkest, "frame at \(frame.time) s: \(frame.brightness) vs \(darkest)")
+        }
+    }
+
+    @Test func slowedVideoKeepsItsSoundInStepWithThePicture() async throws {
+        let folder = try TestMedia.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "tone.mov")
+        try await TestMedia.writeVideo(
+            to: url, duration: 3, width: 320, height: 180, color: TestMedia.RGB.palette[1], date: nil, toneLevel: 0.5
+        )
+        let item = MediaItem(id: "tone", kind: .video, duration: 3, pixelWidth: 320, pixelHeight: 180, hasAudio: true)
+        // 2.88 s of footage fill 3 s; slowed this little, the clip keeps its sound.
+        let clip = EDLClip(
+            id: "tone", mediaID: "tone", kind: .video, sourceStart: 0, sourceDuration: 2.88,
+            timelineStart: 0, duration: 3, beats: 4, audioVolume: 1
+        )
+        let edl = EditDecisionList(targetDuration: 3, duration: 3, style: .calm, seed: 1, clips: [clip])
+        let inputs = RenderInputs(
+            edl: edl, media: ["tone": ImportedMedia(item: item, url: url)], musicURL: nil,
+            settings: RenderSettings(format: .landscape, previewShortSide: 180)
+        )
+        let built = try await CompositionBuilder.build(inputs)
+        let sound: AVAssetTrack = try #require(try await built.composition.loadTracks(withMediaType: .audio).first)
+        let range = try await sound.load(.timeRange)
+        #expect(abs(range.end.seconds - 3) < 0.02, "the sound ends at \(range.end.seconds) s, the picture at 3 s")
     }
 }
 

@@ -10,6 +10,9 @@ enum AudioAnalyzer {
     static let sampleRate = 22_050.0
     static let fftSize = 1024
     static let hop = 256
+    /// Only the start of a longer file is decoded and used (a film is at most 10 minutes), so a
+    /// long mix cannot fill the memory.
+    static let maximumDuration = 15 * 60.0
 
     enum AnalysisError: Error {
         case noAudio
@@ -118,6 +121,7 @@ enum AudioAnalyzer {
     static func readMono(url: URL) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { throw AnalysisError.noAudio }
+        let duration = (try? await asset.load(.duration).seconds) ?? 0
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(
             track: track,
@@ -134,8 +138,13 @@ enum AudioAnalyzer {
         output.alwaysCopiesSampleData = false
         reader.add(output)
         guard reader.startReading() else { throw reader.error ?? AnalysisError.unreadable }
+        let limit = Int(sampleRate * maximumDuration)
         var samples: [Float] = []
-        while let buffer = output.copyNextSampleBuffer() {
+        // Room for the whole song (or the limit) plus a buffer, so the array never doubles.
+        if duration.isFinite, duration > 0 {
+            samples.reserveCapacity(Int(min(Double(limit), duration * sampleRate) + sampleRate))
+        }
+        while samples.count < limit, let buffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
             guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
             let length = CMBlockBufferGetDataLength(block)
@@ -150,6 +159,10 @@ enum AudioAnalyzer {
             if status != noErr { samples.removeLast(samples.count - start) }
         }
         if reader.status == .failed { throw reader.error ?? AnalysisError.unreadable }
+        if samples.count >= limit {
+            reader.cancelReading()
+            samples.removeLast(samples.count - limit)
+        }
         return samples
     }
 }

@@ -189,6 +189,13 @@ struct MusicPickerSection: View {
                 Task { await importSong(from: url) }
             }
         }
+        .task(id: playingSongID) {
+            // A preview stops by itself at the end of the song.
+            while !Task.isCancelled, let player = previewPlayer {
+                try? await Task.sleep(for: .milliseconds(500))
+                if !Task.isCancelled, previewPlayer === player, !player.isPlaying { stopPreview() }
+            }
+        }
         .onDisappear(perform: stopPreview)
     }
 
@@ -260,11 +267,11 @@ struct MusicPickerSection: View {
         defer { analysingSong = false }
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        let folder = draft.storage.musicDirectory
+        let id = "custom-\(UUID().uuidString)"
+        let copy = folder.appending(path: "\(id).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)")
         do {
-            let folder = draft.storage.musicDirectory
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let id = "custom-\(UUID().uuidString)"
-            let copy = folder.appending(path: "\(id).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)")
             try FileManager.default.copyItem(at: url, to: copy)
             let info = try await AudioAnalyzer.trackInfo(id: id, url: copy)
             draft.customSong = SongChoice(
@@ -272,8 +279,11 @@ struct MusicPickerSection: View {
             )
             draft.select(songID: id)
         } catch AudioAnalyzer.AnalysisError.noBeat {
+            // A song that cannot be used is not kept.
+            try? FileManager.default.removeItem(at: copy)
             songMessage = String(localized: "No steady beat was found in that song. Try another one.")
         } catch {
+            try? FileManager.default.removeItem(at: copy)
             songMessage = String(localized: "That file could not be read. Songs bought in Apple Music are protected and cannot be used.")
         }
     }

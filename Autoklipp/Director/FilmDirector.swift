@@ -5,7 +5,7 @@ import FoundationModels
 /// The model's answer for one batch of clips (guided generation).
 @Generable(description: "A plan for a short film made from the user's clips")
 struct DirectorResponse {
-    @Guide(description: "Ids of the clips that fit the wish (such as c3), in the order they should appear in the film")
+    @Guide(description: "Ids from the clip list that fit the wish, in the order they should appear in the film")
     var clipIDs: [String]
 
     @Guide(description: "Chapters of the film in order, each with a short title and the ids of its clips", .maximumCount(6))
@@ -46,8 +46,12 @@ enum FilmDirector {
         ids from the list. Never invent clips.
         """
 
-    /// Tokens kept free for the answer.
-    static let answerReserve = 1_200
+    /// Tokens kept free for the answer format the framework adds to the prompt and for the
+    /// answer's fixed parts (style, title, chapter titles).
+    static let answerReserve = 1_000
+    /// Tokens each clip of a batch may need in the answer: its id can appear twice, in the list
+    /// and in a chapter.
+    static let answerTokensPerClip = 10
 
     /// Asks the model for a plan, batch by batch so long material fits the context window.
     static func plan(instruction: String, media: [MediaItem], analyses: [String: MediaAnalysis]) async throws -> DirectorPlan? {
@@ -57,38 +61,71 @@ enum FilmDirector {
 
         let fixed = instructionText + "\nWish: " + instruction + "\nClips:\n"
         let budget = max(400, model.contextSize - answerReserve - (try await tokens(fixed, model: model)))
-        // Count each line with the framework where it can count, else estimate.
+        // Count each line with the framework where it can count, else estimate, plus its room in
+        // the answer.
         var costs: [String: Int] = [:]
         for description in descriptions {
-            costs[description.line] = try await tokens(description.line, model: model)
+            costs[description.line] = try await tokens(description.line, model: model) + answerTokensPerClip
         }
-        let batches = DirectorBriefing.batches(descriptions, budget: budget) { costs[$0] ?? DirectorBriefing.estimatedTokens($0) }
+        var pending = DirectorBriefing.batches(descriptions, budget: budget) {
+            costs[$0] ?? estimatedTokens($0) + answerTokensPerClip
+        }
 
+        // A batch that fails loses only its own clips; the description fails only when all do.
         var answers: [DirectorAnswer] = []
-        for batch in batches {
+        var failure: (any Error)?
+        while !pending.isEmpty {
             try Task.checkCancellation()
-            let session = LanguageModelSession(model: model) {
-                instructionText
+            let batch = pending.removeFirst()
+            do {
+                answers.append(try await answer(instruction: instruction, batch: batch, model: model))
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as LanguageModelSession.GenerationError {
+                if case .exceededContextWindowSize = error, batch.count > 1 {
+                    // The batch was counted too small: ask again with each half.
+                    let half = batch.count / 2
+                    pending.insert(contentsOf: [Array(batch[..<half]), Array(batch[half...])], at: 0)
+                } else {
+                    failure = error
+                }
+            } catch {
+                failure = error
             }
-            let promptText = "Wish: \(instruction)\nClips:\n" + batch.map(\.line).joined(separator: "\n")
-            let response = try await session.respond(to: Prompt { promptText }, generating: DirectorResponse.self)
-            let content = response.content
-            answers.append(
-                DirectorAnswer(
-                    clipIDs: content.clipIDs,
-                    chapters: content.chapters.map { DirectorAnswer.Chapter(title: $0.title, clipIDs: $0.clipIDs) },
-                    style: content.style,
-                    title: content.title
-                )
-            )
         }
+        if answers.isEmpty, let failure { throw failure }
         return DirectorBriefing.plan(from: answers, descriptions: descriptions)
+    }
+
+    /// The model's answer for one batch of clips.
+    private static func answer(instruction: String, batch: [ClipDescription], model: SystemLanguageModel) async throws
+        -> DirectorAnswer
+    {
+        let session = LanguageModelSession(model: model) {
+            instructionText
+        }
+        let promptText = "Wish: \(instruction)\nClips:\n" + batch.map(\.line).joined(separator: "\n")
+        let response = try await session.respond(to: Prompt { promptText }, generating: DirectorResponse.self)
+        let content = response.content
+        return DirectorAnswer(
+            clipIDs: content.clipIDs,
+            chapters: content.chapters.map { DirectorAnswer.Chapter(title: $0.title, clipIDs: $0.clipIDs) },
+            style: content.style,
+            title: content.title,
+            offeredIDs: batch.map(\.shortID)
+        )
     }
 
     static func tokens(_ text: String, model: SystemLanguageModel) async throws -> Int {
         if #available(iOS 26.4, *) {
             return try await model.tokenCount(for: Instructions { text })
         }
-        return DirectorBriefing.estimatedTokens(text)
+        return estimatedTokens(text)
+    }
+
+    /// A cautious estimate for when the framework cannot count: the clip lines are mostly dates,
+    /// coordinates and scores, which split into short tokens, so one and a half characters each.
+    static func estimatedTokens(_ text: String) -> Int {
+        max(1, (text.utf8.count * 2 + 2) / 3)
     }
 }

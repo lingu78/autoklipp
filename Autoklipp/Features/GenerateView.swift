@@ -75,27 +75,23 @@ struct GenerateView: View {
                 }
             }
             try Task.checkCancellation()
-            draft.analyses.merge(output.analyses) { _, new in new }
-            draft.directorPlan = output.directorPlan
-            draft.directorInstruction = input.instruction
-            draft.directorFailed = output.directorFailed
-            if output.style != draft.style { draft.select(style: output.style) }
-            if draft.title.isEmpty, let title = output.edl.title?.text { draft.title = title }
-            draft.edl = output.edl
+            draft.adopt(output, from: input)
             model.preview?.player.pause()
             model.preview = PreviewSession(edl: output.edl, built: output.built)
             model.save()
             if model.path.last == .generate {
                 model.path.removeLast()
-                model.path.append(.preview)
+                // A new version replaces the film in the preview underneath.
+                if model.path.last != .preview { model.path.append(.preview) }
             }
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = (error as? FilmGenerator.GenerationError)?.errorDescription ?? AppModel.buildFailedMessage
         }
     }
 
+    /// Back to where the run started: the style step, or the film that was shown before.
     private func goBack() {
         if model.path.last == .generate { model.path.removeLast() }
     }

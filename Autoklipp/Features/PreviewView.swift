@@ -7,7 +7,11 @@ struct PreviewView: View {
     @Environment(AppModel.self) private var model
     @State private var sheet: Sheet?
     @State private var currentTime = 0.0
-    @State private var editing = false
+    @State private var analysingSong = false
+    /// The style and music before a Change sheet opened; put back unless the film is made again.
+    @State private var choicesBeforeSheet: StyleAndMusic?
+    /// What to put back if a new version is cancelled or fails.
+    @State private var beforeRegeneration: Regeneration?
 
     enum Sheet: String, Identifiable {
         case export
@@ -16,6 +20,12 @@ struct PreviewView: View {
         case texts
 
         var id: String { rawValue }
+    }
+
+    struct Regeneration {
+        let session: ObjectIdentifier
+        let choices: StyleAndMusic
+        let seed: UInt64
     }
 
     var body: some View {
@@ -48,17 +58,13 @@ struct PreviewView: View {
                     clips: session.edl.clips,
                     media: Dictionary(uniqueKeysWithValues: model.draft.media.map { ($0.id, $0) }),
                     currentTime: currentTime,
-                    isBusy: editing,
+                    isBusy: model.isEditing,
                     onSelect: { clip in
                         let time = CMTime(seconds: clip.timelineStart + 0.01, preferredTimescale: 600)
                         session.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
                     },
                     onEdit: { edit in
-                        editing = true
-                        Task {
-                            await model.apply(edit)
-                            editing = false
-                        }
+                        Task { await model.apply(edit) }
                     }
                 )
 
@@ -87,11 +93,12 @@ struct PreviewView: View {
                 } label: {
                     Label("Title and credits", systemImage: "textformat")
                 }
-                .disabled(model.preview == nil)
+                .disabled(model.preview == nil || model.isEditing)
             }
         }
         .task { await model.preparePreview() }
-        .sheet(item: $sheet) { sheet in
+        .onAppear(perform: restoreAfterCancelledRegeneration)
+        .sheet(item: $sheet, onDismiss: restoreCancelledChange) { sheet in
             switch sheet {
             case .export:
                 if let session = model.preview {
@@ -104,8 +111,8 @@ struct PreviewView: View {
                     regenerate(newSeed: false)
                 }
             case .music:
-                ChangeSheet(title: Text("Change music")) {
-                    MusicPickerSection(draft: model.draft, analysingSong: .constant(false))
+                ChangeSheet(title: Text("Change music"), isBusy: analysingSong) {
+                    MusicPickerSection(draft: model.draft, analysingSong: $analysingSong)
                     SoundSection(draft: model.draft)
                 } onDone: {
                     regenerate(newSeed: false)
@@ -165,7 +172,7 @@ struct PreviewView: View {
             }
         }
         .buttonStyle(.bordered)
-        .disabled(model.preview == nil || editing)
+        .disabled(model.preview == nil || model.isEditing)
     }
 
     @ViewBuilder
@@ -184,15 +191,38 @@ struct PreviewView: View {
 
     private func open(_ sheet: Sheet) {
         model.preview?.player.pause()
+        if sheet == .style || sheet == .music { choicesBeforeSheet = model.draft.styleAndMusic }
         self.sheet = sheet
     }
 
-    /// Makes the film again; locked clips and removed footage are respected (F12).
+    /// A Change sheet closed without making the film again: its choices are undone, so the
+    /// draft keeps matching the film that is shown.
+    private func restoreCancelledChange() {
+        guard let choices = choicesBeforeSheet else { return }
+        model.draft.restore(choices)
+        choicesBeforeSheet = nil
+    }
+
+    /// Makes the film again; locked clips and removed footage are respected (F12). The new
+    /// version opens over this one, so cancelling it comes back here.
     private func regenerate(newSeed: Bool) {
-        model.preview?.player.pause()
+        guard let session = model.preview else { return }
+        session.player.pause()
+        beforeRegeneration = Regeneration(
+            session: ObjectIdentifier(session), choices: choicesBeforeSheet ?? model.draft.styleAndMusic, seed: model.draft.seed
+        )
+        choicesBeforeSheet = nil
         if newSeed { model.draft.seed = UInt64.random(in: 1...UInt64.max) }
-        if model.path.last == .preview { model.path.removeLast() }
         model.path.append(.generate)
+    }
+
+    /// Back from a new version that was cancelled or failed: the shown film's choices return.
+    private func restoreAfterCancelledRegeneration() {
+        guard let before = beforeRegeneration else { return }
+        beforeRegeneration = nil
+        guard let session = model.preview, ObjectIdentifier(session) == before.session else { return }
+        model.draft.restore(before.choices)
+        model.draft.seed = before.seed
     }
 
     private func followPlayback(_ player: AVPlayer) async {
@@ -207,6 +237,8 @@ struct PreviewView: View {
 /// A sheet with picker sections; confirming makes the film again.
 struct ChangeSheet<Content: View>: View {
     let title: Text
+    /// A song is being analysed; the sheet stays open until it is done.
+    var isBusy = false
     @ViewBuilder let content: () -> Content
     let onDone: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -219,15 +251,19 @@ struct ChangeSheet<Content: View>: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
+                            .disabled(isBusy)
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Create film") {
-                            dismiss()
+                            // First, so that closing the sheet does not undo the choices.
                             onDone()
+                            dismiss()
                         }
+                        .disabled(isBusy)
                     }
                 }
         }
+        .interactiveDismissDisabled(isBusy)
     }
 }
 

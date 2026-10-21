@@ -81,6 +81,21 @@ struct DirectorTests {
         #expect(DirectorBriefing.plan(from: [DirectorAnswer(clipIDs: ["x", "c0"])], descriptions: descriptions) == nil)
     }
 
+    @Test func idsAreOnlyAcceptedFromTheBatchThatOfferedThem() {
+        let (media, analyses) = Self.material()
+        let descriptions = DirectorBriefing.describe(media, analyses: analyses)
+        let first = descriptions.prefix(20).map(\.shortID)
+        let second = descriptions.suffix(20).map(\.shortID)
+        let answers = [
+            DirectorAnswer(clipIDs: ["c5", "c25"], offeredIDs: first),
+            // "c3" was never shown in this batch, even though another batch had it.
+            DirectorAnswer(clipIDs: ["c3", "C29"], chapters: [DirectorAnswer.Chapter(title: "Kväll", clipIDs: ["c1", "c33"])], offeredIDs: second),
+        ]
+        let plan = DirectorBriefing.plan(from: answers, descriptions: descriptions)!
+        #expect(plan.mediaIDs == ["p4", "p32", "p28"])
+        #expect(plan.chapters == [DirectorChapter(title: "Kväll", mediaIDs: ["p32"])])
+    }
+
     /// Phase 5 acceptance in logic form: when the director picks the clips with children, the
     /// film consists mostly of them, at full length, even though most material has no children.
     @Test func aChildrenOnlyPlanGivesAFilmMostlyOfChildren() {
@@ -96,6 +111,40 @@ struct DirectorTests {
         let children = Set(plan.mediaIDs)
         let share = Double(edl.clips.filter { children.contains($0.mediaID) }.count) / Double(edl.clips.count)
         #expect(share > 0.8, "share of clips with children: \(share)")
+    }
+
+    /// The same at the default length, where the chosen stills alone fall well short: they are
+    /// lengthened first, and the rest is topped up with few, long clips of other material.
+    @Test func aSmallChoiceIsLengthenedBeforeItIsToppedUp() {
+        var media: [MediaItem] = []
+        var analyses: [String: MediaAnalysis] = [:]
+        for index in 0..<30 {
+            let item = MediaItem(id: "p\(index)", kind: .photo, creationDate: Fixtures.baseDate.addingTimeInterval(Double(index) * 300))
+            media.append(item)
+            let child = index % 3 == 0
+            analyses[item.id] = MediaAnalysis(
+                mediaID: item.id, still: FrameMetrics(faceCount: child ? 2 : 0, faceQuality: 0.6),
+                labels: child ? ["child", "people", "grass"] : ["sky", "tree", "lake"]
+            )
+        }
+        let descriptions = DirectorBriefing.describe(media, analyses: analyses)
+        let childIDs = descriptions.filter { $0.line.contains("child") }.map(\.shortID)
+        let plan = DirectorBriefing.plan(from: [DirectorAnswer(clipIDs: childIDs)], descriptions: descriptions)!
+        for bpm in [104.0, 120, 90] {
+            var request = Fixtures.request(media: media, target: 60, style: .travel, bpm: bpm)
+            request.analyses = analyses
+            request.director = plan
+            let edl = Planner.plan(request)
+            expectWellFormed(edl, media: media)
+            #expect(abs(edl.duration - 60) <= Timing.lengthTolerance)
+            let children = Set(plan.mediaIDs)
+            let chosen = edl.clips.filter { children.contains($0.mediaID) }
+            #expect(Set(chosen.map(\.mediaID)) == children)
+            let share = Double(chosen.count) / Double(edl.clips.count)
+            #expect(share > 0.5, "\(bpm) BPM: share of clips with children: \(share)")
+            let longest = Double(PlanningEngine.stillBeats(period: 60 / bpm).upperBound) * 60 / bpm
+            #expect(chosen.allSatisfy { $0.duration >= longest - 1.0 / 30 || $0.id == edl.clips.last?.id })
+        }
     }
 
     @Test func directorOrderWinsOverChronology() {

@@ -26,6 +26,8 @@ enum VideoExporter {
         }
         session.videoComposition = built.videoComposition
         session.audioMix = built.audioMix
+        // Slightly retimed original sound keeps its pitch.
+        session.audioTimePitchAlgorithm = .spectral
         session.shouldOptimizeForNetworkUse = true
         try? FileManager.default.removeItem(at: url)
 

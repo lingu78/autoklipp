@@ -138,10 +138,16 @@ public enum Planner {
         return engine.run()
     }
 
-    /// Longest film the material allows without repeating anything.
-    public static func maximumDuration(of media: [MediaItem]) -> Double {
-        media.reduce(0) { total, item in
-            if item.kind.isStill { return total + Timing.stillRange.upperBound }
+    /// Longest film the material allows without repeating anything. With the song's beat period,
+    /// a still counts with the whole beats it may last; without it, with the 4 s maximum.
+    public static func maximumDuration(of media: [MediaItem], beatPeriod: Double? = nil) -> Double {
+        var still = Timing.stillRange.upperBound
+        if let beatPeriod {
+            let period = max(0.1, beatPeriod)
+            still = Double(PlanningEngine.stillBeats(period: period).upperBound) * period
+        }
+        return media.reduce(0) { total, item in
+            if item.kind.isStill { return total + still }
             return total + (item.duration >= Timing.minSourceVideo ? item.duration : 0)
         }
     }
@@ -165,6 +171,8 @@ struct PlanningEngine {
         var usableDuration: Double
         /// Not part of the director's choice; only used when the chosen media run out.
         var isSecondary: Bool
+        /// Exact source ranges the user removed.
+        var removed: [(start: Double, end: Double)] = []
 
         var isStill: Bool { item.kind.isStill }
     }
@@ -231,11 +239,10 @@ struct PlanningEngine {
         beats = grid
         beatPeriod = period
 
-        let stillMin = max(1, Int((Timing.stillRange.lowerBound / period - 1e-6).rounded(.up)))
-        let stillMax = max(stillMin, Int((Timing.stillRange.upperBound / period + 1e-6).rounded(.down)))
-        stillMinBeats = stillMin
-        stillMaxBeats = stillMax
-        stillPrefBeats = min(stillMax, max(stillMin, Int((request.style.stillDuration / period).rounded())))
+        let stills = Self.stillBeats(period: period)
+        stillMinBeats = stills.lowerBound
+        stillMaxBeats = stills.upperBound
+        stillPrefBeats = min(stills.upperBound, max(stills.lowerBound, Int((request.style.stillDuration / period).rounded())))
 
         let videoMin = max(1, Int((Timing.minVideoClip / period - 1e-6).rounded(.up)))
         videoMinBeats = videoMin
@@ -245,11 +252,19 @@ struct PlanningEngine {
         videoPrefBeats = min(upper, max(lower, Int((request.style.typicalClipDuration / period).rounded())))
     }
 
+    /// Whole beats a still may last at this beat period (spec F6).
+    static func stillBeats(period: Double) -> ClosedRange<Int> {
+        let lower = max(1, Int((Timing.stillRange.lowerBound / period - 1e-6).rounded(.up)))
+        let upper = max(lower, Int((Timing.stillRange.upperBound / period + 1e-6).rounded(.down)))
+        return lower...upper
+    }
+
     var expectedStill: Double { Double(stillPrefBeats) * beatPeriod }
-    /// Long films swing through the whole range, so their average clip is mid-range.
+    /// Long films swing through the whole range, so their average clip is mid-range. Moments
+    /// span whole beats, so that a clip can grow to fill its moment when footage runs short.
     var expectedVideo: Double {
         let beats = target > Timing.longFilm
-            ? Double(videoSoft.lowerBound + videoSoft.upperBound) / 2 : Double(videoPrefBeats)
+            ? (Double(videoSoft.lowerBound + videoSoft.upperBound) / 2).rounded(.up) : Double(videoPrefBeats)
         return beats * beatPeriod
     }
 
@@ -263,8 +278,8 @@ struct PlanningEngine {
             moments = ordered(initialMoments())
             moments = removingNeighbourDuplicates(moments)
         }
-        let (slots, shortage) = fit(moments)
-        return makeEDL(slots: slots, shortage: shortage)
+        let (slots, shortage, overrun) = fit(moments)
+        return makeEDL(slots: slots, shortage: shortage, overrun: overrun)
     }
 
     /// Moments for the clips of an earlier edit, in their order, minus removed material.
@@ -277,7 +292,9 @@ struct PlanningEngine {
             }
             let start = min(max(0, clip.sourceStart), max(0, source.item.duration - Timing.minVideoClip))
             let length = min(max(clip.sourceDuration, Timing.minVideoClip), source.item.duration - start)
-            guard clip.isLocked || windowScore(source, start: start, length: length) >= 0 else { return nil }
+            // Only a clip whose own footage was removed goes, not its neighbours in the same video.
+            let removed = source.removed.contains { start < $0.end - 1e-6 && start + length > $0.start + 1e-6 }
+            guard clip.isLocked || !removed else { return nil }
             return Moment(source: index, start: start, length: length, score: clip.score, anchor: clip, isLocked: clip.isLocked)
         }
     }
@@ -347,6 +364,7 @@ struct PlanningEngine {
                 source.segmentScores = scores
                 source.segmentSignatures = signatures
                 source.segmentAudio = audio
+                source.removed = removed.map { (start: $0.start ?? 0, end: $0.end ?? 0) }
                 let usable = scores.filter { $0 >= 0 }
                 source.usableDuration = min(item.duration, Double(usable.count) * Timing.segmentLength)
                 let best = usable.sorted(by: >).prefix(max(1, usable.count / 2))
@@ -504,8 +522,9 @@ struct PlanningEngine {
         return best
     }
 
-    /// Mean segment score over a window, or -1 when it touches a removed range.
-    func windowScore(_ source: Source, start: Double, length: Double) -> Double {
+    /// Mean segment score over a window, or -1 when it touches a removed range (unless
+    /// `skippingRemoved`, which leaves those segments out).
+    func windowScore(_ source: Source, start: Double, length: Double, skippingRemoved: Bool = false) -> Double {
         let scores = source.segmentScores
         var total = 0.0
         var weight = 0.0
@@ -515,9 +534,12 @@ struct PlanningEngine {
             if segmentStart >= start + length - 1e-9 { break }
             let overlap = min(segmentStart + Timing.segmentLength, start + length) - max(segmentStart, start)
             if overlap > 1e-9 {
-                if scores[index] < 0 { return -1 }
-                total += scores[index] * overlap
-                weight += overlap
+                if scores[index] < 0 {
+                    guard skippingRemoved else { return -1 }
+                } else {
+                    total += scores[index] * overlap
+                    weight += overlap
+                }
             }
             index += 1
         }
@@ -609,21 +631,17 @@ struct PlanningEngine {
                 if moment.anchor != nil { roomStart = moment.start }
                 roomStart = min(roomStart, moment.start)
                 roomEnd = max(roomEnd, moment.end)
-                // Do not grow into ranges the user removed.
-                let scores = source.segmentScores
-                var lowIndex = Int(moment.start / Timing.segmentLength) - 1
-                while lowIndex >= 0, Double(lowIndex + 1) * Timing.segmentLength > roomStart {
-                    if scores[lowIndex] < 0 { roomStart = max(roomStart, Double(lowIndex + 1) * Timing.segmentLength); break }
-                    lowIndex -= 1
-                }
-                var highIndex = Int((moment.end / Timing.segmentLength).rounded(.up))
-                while highIndex < scores.count, Double(highIndex) * Timing.segmentLength < roomEnd {
-                    if scores[highIndex] < 0 { roomEnd = min(roomEnd, Double(highIndex) * Timing.segmentLength); break }
-                    highIndex += 1
+                // Do not grow into ranges the user removed, up to their exact edges.
+                for removed in source.removed {
+                    if removed.start < moment.end - 1e-6 { roomStart = max(roomStart, min(removed.end, moment.start)) }
+                    if removed.end > moment.start + 1e-6 { roomEnd = min(roomEnd, max(removed.start, moment.end)) }
                 }
                 result[index].roomStart = roomStart
                 result[index].roomEnd = roomEnd
-                let fit = Int(((roomEnd - roomStart) / beatPeriod + 1e-6).rounded(.down))
+                // An anchor's in-point sits on a frame, so its room can fall a fraction of a frame
+                // short of the beats it had.
+                let slack = moment.anchor != nil ? 1 / Double(max(1, request.frameRate)) : 0
+                let fit = Int(((roomEnd - roomStart + slack) / beatPeriod + 1e-6).rounded(.down))
                 result[index].hardMin = videoMinBeats
                 result[index].hardMax = max(videoMinBeats, fit)
                 result[index].softMin = min(videoSoft.lowerBound, result[index].hardMax)
@@ -656,12 +674,37 @@ struct PlanningEngine {
         return result
     }
 
-    mutating func fit(_ moments: [Moment]) -> (slots: [Slot], shortage: Bool) {
+    func totalBeats(_ slots: [Slot]) -> Int {
+        slots.reduce(0) { $0 + $1.k }
+    }
+
+    /// Whether a clip list was cut on this request's beats, that is, to the same song.
+    func isOnTheBeat(_ clips: [EDLClip]) -> Bool {
+        let frame = 1 / Double(max(1, request.frameRate))
+        let onBeat = clips.filter { clip in
+            let index = beats.firstIndex { $0 >= clip.timelineStart - frame - 1e-6 } ?? beats.count - 1
+            return abs(beats[index] - clip.timelineStart) <= frame + 1e-6
+        }
+        return !clips.isEmpty && Double(onBeat.count) >= 0.9 * Double(clips.count)
+    }
+
+    mutating func fit(_ moments: [Moment]) -> (slots: [Slot], shortage: Bool, overrun: Bool) {
         var slots = moments.map { Slot(moment: $0, k: 1) }
         slots = recomputed(slots)
         for index in slots.indices { slots[index].k = slots[index].pref }
         slots = recomputed(slots)
         for index in slots.indices { slots[index].k = slots[index].pref }
+        let arranged = request.arrangement != nil
+        if let arrangement = request.arrangement, isOnTheBeat(arrangement) {
+            // On the same beat, the user's clips start from the lengths they had, so only what
+            // changed is re-timed. (To another song they start from the style's lengths.)
+            for index in slots.indices {
+                guard let previous = slots[index].moment.anchor?.beats else { continue }
+                slots[index].k = min(slots[index].hardMax, max(slots[index].hardMin, previous))
+            }
+            slots = recomputed(slots)
+        }
+        let growth = growthSteps(arranged: arranged)
 
         let tolerance = Timing.tailTolerance
         var shortage = false
@@ -676,26 +719,18 @@ struct PlanningEngine {
                 shortage = true
                 break
             }
-            let total = slots.reduce(0) { $0 + $1.k }
+            let total = totalBeats(slots)
             let end = beatTime(total)
             let lastStart = beatTime(total - slots[slots.count - 1].k)
-            // Lengths first move towards their preferred beat counts, then moments are added or
-            // removed, and only then do lengths stray from the preference (soft, then hard limits).
             if end < target - tolerance {
-                if let index = growCandidate(slots, limit: .preferred) {
-                    slots[index].k += 1
-                } else if let added = addMoment(to: slots) {
-                    slots = added
-                } else if let index = growCandidate(slots, limit: .soft) ?? growCandidate(slots, limit: .hard) {
-                    slots[index].k += 1
-                } else if let added = addMoment(to: slots, allowShort: true) {
-                    slots = added
-                } else {
+                guard let longer = grown(slots, by: growth) else {
                     shortage = true
                     break
                 }
+                slots = longer
             } else if lastStart >= target - tolerance {
-                if let index = shrinkCandidate(slots, limit: .preferred) {
+                // The user's own arrangement keeps its clips as long as lengths can give.
+                if let index = shrinkCandidate(slots, limit: .preferred) ?? (arranged ? shrinkCandidate(slots, limit: .soft) : nil) {
                     slots[index].k -= 1
                 } else if let index = removalCandidate(slots, total: total) {
                     slots.remove(at: index)
@@ -710,21 +745,140 @@ struct PlanningEngine {
             }
         }
         // Clips that would start after the end are dropped (only reachable with locked clips).
+        // Locked clips keep their place even then, and the film runs on to the end of the last one.
+        var overrun = false
         while slots.count > 1 {
-            let total = slots.reduce(0) { $0 + $1.k }
-            guard beatTime(total - slots[slots.count - 1].k) >= target - 1e-6 else { break }
+            guard beatTime(totalBeats(slots) - slots[slots.count - 1].k) >= target - 1e-6 else { break }
+            guard slots[slots.count - 1].moment.locked == nil else {
+                overrun = true
+                break
+            }
             slots.removeLast()
         }
-        return (slots, shortage)
+        if !shortage && !overrun, !slots.isEmpty {
+            slots = balancedTail(slots)
+            // Likewise a locked last clip is shown in full rather than cut to a flash.
+            if let last = slots.last, last.moment.locked != nil, tailDuration(slots) < tailLimits(last).lowerBound - 1e-6 {
+                overrun = true
+            }
+        }
+        return (slots, shortage, overrun)
+    }
+
+    /// One way of making a film that is too short longer.
+    enum Growth {
+        case lengthen(Limit, primaryOnly: Bool)
+        case add(primaryOnly: Bool, allowShort: Bool)
+    }
+
+    /// Lengths first move towards their preferred beat counts, then moments are added, and only
+    /// then do lengths stray from the preference (soft, then hard limits). In the user's own
+    /// arrangement the clips are lengthened within their soft limits before anything new is
+    /// added. With the director's choice, its clips are lengthened and given more moments
+    /// before other material tops them up, and that material comes in few, long clips.
+    func growthSteps(arranged: Bool) -> [Growth] {
+        var steps: [Growth] = [.lengthen(.preferred, primaryOnly: false)]
+        if sources.contains(where: \.isSecondary) {
+            steps += [
+                .lengthen(.soft, primaryOnly: true), .add(primaryOnly: true, allowShort: false),
+                .lengthen(.hard, primaryOnly: true), .lengthen(.soft, primaryOnly: false),
+                .add(primaryOnly: false, allowShort: false),
+            ]
+        } else if arranged {
+            steps += [.lengthen(.soft, primaryOnly: false), .add(primaryOnly: false, allowShort: false)]
+        } else {
+            steps += [.add(primaryOnly: false, allowShort: false), .lengthen(.soft, primaryOnly: false)]
+        }
+        return steps + [.lengthen(.hard, primaryOnly: false), .add(primaryOnly: false, allowShort: true)]
+    }
+
+    /// The slots after the first growth step that applies, or nil when nothing can grow.
+    mutating func grown(_ slots: [Slot], by steps: [Growth]) -> [Slot]? {
+        for step in steps {
+            switch step {
+            case let .lengthen(limit, primaryOnly):
+                if let index = growCandidate(slots, limit: limit, primaryOnly: primaryOnly) {
+                    var result = slots
+                    result[index].k += 1
+                    return result
+                }
+            case let .add(primaryOnly, allowShort):
+                if let added = addMoment(to: slots, allowShort: allowShort, primaryOnly: primaryOnly) { return added }
+            }
+        }
+        return nil
+    }
+
+    // MARK: The last clip
+
+    /// How long the last clip is on screen once the film is cut at the target, as `makeEDL` cuts it.
+    func tailDuration(_ slots: [Slot]) -> Double {
+        quantized(target) - quantized(beatTime(totalBeats(slots) - slots[slots.count - 1].k))
+    }
+
+    /// How long a clip may be on screen: stills within spec F6, videos at least a minimum clip.
+    func tailLimits(_ slot: Slot) -> ClosedRange<Double> {
+        sources[slot.moment.source].isStill ? Timing.stillRange : Timing.minVideoClip...Double.greatestFiniteMagnitude
+    }
+
+    /// Cutting the film at the target can leave the last clip on screen for less than a clip may
+    /// be (or a still for more). The cut before it then moves a beat at a time by re-timing the
+    /// clips before it; when that is not enough, a last moment the planner added itself makes
+    /// way for longer clips before it.
+    func balancedTail(_ slots: [Slot]) -> [Slot] {
+        if let shifted = shiftedTail(slots) { return shifted }
+        guard slots.count > 1, slots[slots.count - 1].moment.anchor == nil else { return slots }
+        var shorter = recomputed(Array(slots.dropLast()))
+        while beatTime(totalBeats(shorter)) < target - Timing.tailTolerance {
+            guard let index = growCandidate(shorter, limit: .preferred) ?? growCandidate(shorter, limit: .soft)
+                ?? growCandidate(shorter, limit: .hard)
+            else { return slots }
+            shorter[index].k += 1
+        }
+        guard beatTime(totalBeats(shorter) - shorter[shorter.count - 1].k) < target - Timing.tailTolerance else { return slots }
+        return shiftedTail(shorter) ?? slots
+    }
+
+    /// The slots with the last cut moved so that the last clip's time on screen is within its
+    /// limits, or nil when the clips before it cannot make that room.
+    func shiftedTail(_ slots: [Slot]) -> [Slot]? {
+        guard let lastSlot = slots.last else { return nil }
+        let limits = tailLimits(lastSlot)
+        let last = slots.count - 1
+        var result = slots
+        for _ in 0..<64 {
+            let tail = tailDuration(result)
+            let earlier = Array(result.dropLast())
+            if tail < limits.lowerBound - 1e-6 {
+                // Cut a beat earlier; the last clip grows instead when the film would end too soon.
+                guard let index = shrinkCandidate(earlier, limit: .preferred) ?? shrinkCandidate(earlier, limit: .soft)
+                    ?? shrinkCandidate(earlier, limit: .hard)
+                else { return nil }
+                if beatTime(totalBeats(result) - 1) < target - Timing.tailTolerance {
+                    guard result[last].k < result[last].hardMax else { return nil }
+                    result[last].k += 1
+                }
+                result[index].k -= 1
+            } else if tail > limits.upperBound + 1e-6 {
+                // Cut a beat later.
+                guard let index = growCandidate(earlier, limit: .preferred) ?? growCandidate(earlier, limit: .soft)
+                    ?? growCandidate(earlier, limit: .hard)
+                else { return nil }
+                result[index].k += 1
+            } else {
+                return result
+            }
+        }
+        return nil
     }
 
     enum Limit {
         case preferred, soft, hard
     }
 
-    func growCandidate(_ slots: [Slot], limit: Limit) -> Int? {
+    func growCandidate(_ slots: [Slot], limit: Limit, primaryOnly: Bool = false) -> Int? {
         var best: (index: Int, value: Double)?
-        for (index, slot) in slots.enumerated() {
+        for (index, slot) in slots.enumerated() where !primaryOnly || !sources[slot.moment.source].isSecondary {
             let ceiling = switch limit {
             case .preferred: slot.pref
             case .soft: slot.softMax
@@ -766,15 +920,31 @@ struct PlanningEngine {
         return best?.index
     }
 
+    /// The footage a video slot plays at its current length, placed the way `makeEDL` places it,
+    /// together with its moment.
+    func footage(_ slot: Slot) -> (Double, Double) {
+        let moment = slot.moment
+        let length = Double(slot.k) * beatPeriod
+        guard slot.roomEnd - slot.roomStart > length else {
+            return (min(moment.start, slot.roomStart), max(moment.end, slot.roomEnd))
+        }
+        let wanted = moment.anchor?.sourceStart ?? (moment.center - length / 2)
+        let start = min(max(wanted, slot.roomStart), slot.roomEnd - length)
+        return (min(moment.start, start), max(moment.end, start + length))
+    }
+
     /// Adds the most valuable unused moment in its chronological place, or returns nil.
-    /// `allowShort` also accepts leftover footage shorter than a typical clip.
-    mutating func addMoment(to slots: [Slot], allowShort: Bool = false) -> [Slot]? {
+    /// `allowShort` also accepts leftover footage shorter than a typical clip; `primaryOnly`
+    /// leaves out material outside the director's choice.
+    mutating func addMoment(to slots: [Slot], allowShort: Bool = false, primaryOnly: Bool = false) -> [Slot]? {
         let used = Set(slots.map(\.moment.source))
         var candidates: [(moment: Moment, value: Double)] = []
 
         // Unused sources first, so that every source contributes before any is used twice.
         for (index, source) in sources.enumerated()
-        where !used.contains(index) && !rejectedSources.contains(index) && source.usableDuration > 0 {
+        where !used.contains(index) && !rejectedSources.contains(index) && source.usableDuration > 0
+            && !(primaryOnly && source.isSecondary)
+        {
             let coverage = source.isSecondary ? 0.0 : 1.0
             if source.isStill {
                 candidates.append((Moment(source: index, start: 0, length: expectedStill, score: source.stillScore), coverage + source.quality))
@@ -782,10 +952,10 @@ struct PlanningEngine {
                 candidates.append((Moment(source: index, start: window.start, length: window.length, score: window.score), coverage + window.score))
             }
         }
-        // Then another moment from a video that still has unused footage.
-        for index in used where !sources[index].isStill {
+        // Then another moment from a video that still has footage its clips do not play.
+        for index in used where !sources[index].isStill && !(primaryOnly && sources[index].isSecondary) {
             let source = sources[index]
-            let windows = slots.filter { $0.moment.source == index }.map { ($0.moment.start, $0.moment.end) }
+            let windows = slots.filter { $0.moment.source == index }.map { footage($0) }
             let spacing = source.item.duration / Double(windows.count + 1)
             if let window = nextWindow(source, length: expectedVideo, existing: windows, spacing: spacing, allowShort: allowShort) {
                 let coverage = source.isSecondary ? -1.0 : 0.0
@@ -801,8 +971,16 @@ struct PlanningEngine {
             // Skip a moment that would sit next to a near-identical one.
             if position > 0, isNearDuplicate(newSlots[position - 1].moment, candidate.moment) { continue }
             if position < newSlots.count, isNearDuplicate(newSlots[position].moment, candidate.moment) { continue }
+            // The video's other clips keep the footage they play, so their rooms stay around it.
+            for index in newSlots.indices where newSlots[index].moment.source == candidate.moment.source {
+                let range = footage(newSlots[index])
+                newSlots[index].moment.start = range.0
+                newSlots[index].moment.length = range.1 - range.0
+            }
             newSlots.insert(Slot(moment: candidate.moment, k: 1), at: position)
             newSlots = recomputed(newSlots)
+            // Never take footage a clip needs; it would play slowed down.
+            if newSlots.indices.contains(where: { $0 != position && newSlots[$0].k > newSlots[$0].hardMax }) { continue }
             newSlots[position].k = newSlots[position].pref
             return newSlots
         }
@@ -816,9 +994,9 @@ struct PlanningEngine {
         return (time * fps).rounded() / fps
     }
 
-    mutating func makeEDL(slots: [Slot], shortage: Bool) -> EditDecisionList {
-        let total = slots.reduce(0) { $0 + $1.k }
-        let filmEnd = shortage ? quantized(beatTime(total)) : quantized(target)
+    mutating func makeEDL(slots: [Slot], shortage: Bool, overrun: Bool) -> EditDecisionList {
+        let total = totalBeats(slots)
+        let filmEnd = shortage || overrun ? quantized(beatTime(total)) : quantized(target)
 
         var clips: [EDLClip] = []
         var anchoredTransitions: [TransitionKind?] = []
@@ -850,7 +1028,7 @@ struct PlanningEngine {
                 }
                 sourceStart = max(0, sourceStart)
                 sourceDuration = min(sourceDuration, item.duration - sourceStart)
-                score = max(0, windowScore(source, start: sourceStart, length: sourceDuration))
+                score = max(0, windowScore(source, start: sourceStart, length: sourceDuration, skippingRemoved: true))
             }
 
             let id = slot.moment.anchor?.id ?? EDLClip.makeID(mediaID: item.id, sourceStart: sourceStart)

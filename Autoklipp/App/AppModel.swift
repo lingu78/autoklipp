@@ -25,9 +25,13 @@ final class AppModel {
     let container: ModelContainer
     /// How long the last clip-strip edit took until the new preview was ready.
     private(set) var lastEditDuration: Duration?
+    /// Clip-strip and text edits whose new preview is not ready yet.
+    private(set) var editsInProgress = 0
     var message: String?
     /// Apple Intelligence can direct films on this device (checked at start and on return).
     private(set) var directorAvailable = FilmDirector.isAvailable
+
+    var isEditing: Bool { editsInProgress > 0 }
 
     func refreshDirectorAvailability() {
         directorAvailable = FilmDirector.isAvailable
@@ -40,12 +44,17 @@ final class AppModel {
             try? FileManager.default.createDirectory(at: .applicationSupportDirectory, withIntermediateDirectories: true)
         }
         let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
+        let persistent: Bool
         if let container = try? ModelContainer(for: SavedProject.self, configurations: configuration) {
             self.container = container
+            persistent = !inMemory
         } else {
             // A broken store must not stop the app; projects are then kept for this session only.
             self.container = try! ModelContainer(for: SavedProject.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+            persistent = false
         }
+        // Only the real store knows every saved project; with the fallback all would look abandoned.
+        if persistent { removeAbandonedProjects() }
     }
 
     private var context: ModelContext { container.mainContext }
@@ -54,6 +63,7 @@ final class AppModel {
 
     func newProject() {
         closePreview()
+        leave(draft)
         draft = ProjectDraft()
         path = [.media]
     }
@@ -76,7 +86,10 @@ final class AppModel {
             return
         }
         closePreview()
+        if draft.id != project.id { leave(draft) }
         draft = ProjectDraft(id: project.id, restoring: snapshot)
+        // Copies from an earlier visit that was never saved.
+        removeUnusedFiles(in: draft.storage, keeping: snapshot.fileNames)
         path = draft.edl == nil ? [.media] : [.preview]
     }
 
@@ -99,6 +112,11 @@ final class AppModel {
 
     /// Writes the current project to the store.
     func save() {
+        save(draft)
+    }
+
+    /// Writes a project to the store; an edit that finishes after the user left its film still counts.
+    private func save(_ draft: ProjectDraft) {
         guard draft.edl != nil, let payload = try? JSONEncoder().encode(draft.snapshot()) else { return }
         let project: SavedProject
         if let existing = savedProject(id: draft.id) {
@@ -112,14 +130,70 @@ final class AppModel {
         project.duration = draft.edl?.duration ?? 0
         project.updatedAt = .now
         try? context.save()
-        if project.thumbnail == nil, let first = draft.edl?.clips.first,
+        // The thumbnail follows the film's first clip.
+        if let first = draft.edl?.clips.first, project.thumbnail == nil || draft.thumbnailMediaID != first.mediaID,
             let media = draft.media.first(where: { $0.id == first.mediaID })
         {
+            draft.thumbnailMediaID = media.id
             Task {
                 let image = await Thumbnailer.image(for: media, maxPixelSize: 300)
+                // A later save may have asked for another clip meanwhile.
+                guard draft.thumbnailMediaID == media.id else { return }
                 project.thumbnail = image?.jpegData(compressionQuality: 0.8)
                 try? context.save()
             }
+        }
+        // Files the project stopped using, e.g. deselected media or a replaced song.
+        if draft === self.draft { removeUnusedFiles(in: draft.storage, keeping: draft.fileNames) }
+    }
+
+    // MARK: Copied files
+
+    /// Cleans up after the user leaves a project: a draft that was never saved loses its whole
+    /// folder, a saved one keeps exactly the files its saved copy uses.
+    private func leave(_ draft: ProjectDraft) {
+        let id = draft.id
+        let descriptor = FetchDescriptor<SavedProject>(predicate: #Predicate { $0.id == id })
+        // When the store cannot answer, nothing is deleted.
+        guard let found = try? context.fetch(descriptor) else { return }
+        guard let saved = found.first else {
+            let storage = draft.storage
+            Task.detached { storage.removeAll() }
+            return
+        }
+        guard let snapshot = saved.snapshot else { return }
+        removeUnusedFiles(in: draft.storage, keeping: snapshot.fileNames)
+    }
+
+    /// Deletes copied media and songs in a project folder that are not among `keep`. The files are
+    /// listed now, so a file copied in afterwards is never touched.
+    private func removeUnusedFiles(in storage: ProjectStorage, keeping keep: Set<String>) {
+        let unused = Self.unusedFiles(in: storage, keeping: keep)
+        guard !unused.isEmpty else { return }
+        Task.detached {
+            for url in unused { try? FileManager.default.removeItem(at: url) }
+        }
+    }
+
+    /// The files in a project's media and music folders whose names are not among `keep`.
+    static func unusedFiles(in storage: ProjectStorage, keeping keep: Set<String>) -> [URL] {
+        [storage.mediaDirectory, storage.musicDirectory]
+            .flatMap { (try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil)) ?? [] }
+            .filter { !keep.contains($0.lastPathComponent) }
+    }
+
+    /// Removes the folders of projects that were never saved, e.g. when the app was closed
+    /// before a film was made.
+    private func removeAbandonedProjects() {
+        var descriptor = FetchDescriptor<SavedProject>()
+        descriptor.propertiesToFetch = [\.id]
+        guard let saved = try? context.fetch(descriptor) else { return }
+        let keep = Set(saved.map(\.id)).union([draft.id])
+        let folders = (try? FileManager.default.contentsOfDirectory(at: ProjectStorage.root, includingPropertiesForKeys: nil)) ?? []
+        let abandoned = folders.compactMap { UUID(uuidString: $0.lastPathComponent) }.filter { !keep.contains($0) }
+        guard !abandoned.isEmpty else { return }
+        Task.detached {
+            for id in abandoned { ProjectStorage(projectID: id).removeAll() }
         }
     }
 
@@ -134,55 +208,79 @@ final class AppModel {
     func preparePreview() async {
         guard preview == nil, let edl = draft.edl else { return }
         do {
-            let built = try await FilmGenerator.build(edl, media: draft.media, song: draft.song, settings: .preview(draft.format))
+            let built = try await FilmGenerator.build(edl, media: draft.media, song: draft.song(for: edl), settings: .preview(draft.format))
             guard draft.edl == edl else { return }
             preview = PreviewSession(edl: edl, built: built)
         } catch {
-            message = error.localizedDescription
+            message = Self.buildFailedMessage
         }
     }
 
     /// Applies a clip-strip edit: re-times the film and rebuilds the preview.
     func apply(_ edit: ClipEdit) async {
         guard let session = preview else { return }
+        let draft = self.draft
+        editsInProgress += 1
+        defer { editsInProgress -= 1 }
         let clock = ContinuousClock()
         let started = clock.now
-        let focus = focusClipID(for: edit, in: session.edl)
-        let request = FilmGenerator.planningRequest(GenerationInput(draft: draft))
-        let (edl, exclusions) = Planner.apply(edit, to: session.edl, request: request)
+        // An edit builds on the one before it, even while that one's preview is being made.
+        let base = draft.edl ?? session.edl
+        let focus = focusClipID(for: edit, in: base)
+        var input = GenerationInput(draft: draft)
+        // Only the clips change; the film keeps the song and style it was made with.
+        input.song = draft.song(for: base)
+        input.style = base.style
+        let (edl, exclusions) = Planner.apply(edit, to: base, request: FilmGenerator.planningRequest(input))
         draft.exclusions = exclusions
         draft.edl = edl
-        if case .setLocked = edit {
+        if case .move = edit { draft.arrangedByUser = true }
+        if case .setLocked = edit, base == session.edl {
             // Locking changes no timing; the film stays as it is.
             session.update(edl: edl)
         } else {
-            await rebuild(session, edl: edl, focus: focus)
+            await rebuild(session, of: draft, edl: edl, focus: focus)
         }
         lastEditDuration = clock.now - started
-        save()
+        save(draft)
     }
 
     /// Sets the title and end credit (F14) without changing the edit.
     func setTexts(title: String, endCredit: String) async {
-        draft.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let draft = self.draft
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // From now on the director's title no longer replaces it, even when it was removed.
+        if title != draft.title { draft.titleChosenByUser = true }
+        draft.title = title
         draft.endCredit = endCredit.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let session = preview else { return }
-        var edl = session.edl
+        editsInProgress += 1
+        defer { editsInProgress -= 1 }
+        var edl = draft.edl ?? session.edl
         edl.title = draft.title.isEmpty ? nil : TextCard(text: draft.title)
         edl.endCredit = draft.endCredit.isEmpty ? nil : TextCard(text: draft.endCredit)
         draft.edl = edl
-        await rebuild(session, edl: edl, focus: nil)
-        save()
+        await rebuild(session, of: draft, edl: edl, focus: nil)
+        save(draft)
     }
 
-    private func rebuild(_ session: PreviewSession, edl: EditDecisionList, focus: String?) async {
+    private func rebuild(_ session: PreviewSession, of draft: ProjectDraft, edl: EditDecisionList, focus: String?) async {
         do {
-            let built = try await FilmGenerator.build(edl, media: draft.media, song: draft.song, settings: .preview(draft.format))
+            let built = try await FilmGenerator.build(edl, media: draft.media, song: draft.song(for: edl), settings: .preview(draft.format))
+            // A later edit replaced this one, or the user left the film; only the newest is shown.
+            guard draft.edl == edl, preview === session else { return }
             let seekTime = focus.flatMap { id in edl.clips.first { $0.id == id }?.timelineStart }
             await session.replace(edl: edl, built: built, seekTo: seekTime)
+            // The user went back while it was being made: the film must not play unseen.
+            if path.last != .preview { session.player.pause() }
         } catch {
-            message = error.localizedDescription
+            if draft.edl == edl { message = Self.buildFailedMessage }
         }
+    }
+
+    /// Shown when a film cannot be put together; the technical reason means nothing to the user.
+    static var buildFailedMessage: String {
+        String(localized: "The film could not be made. A photo or video may be missing.")
     }
 
     /// The clip to show after an edit: the moved clip, or the one after a removed clip.
@@ -204,6 +302,16 @@ enum LengthChoice: Hashable, Codable, Sendable {
     case auto
     case preset(Double)
     case custom(Double)
+}
+
+/// The style and music choices a Change sheet edits, kept so that a cancelled change can be undone.
+struct StyleAndMusic: Equatable, Sendable {
+    var style: StyleID
+    var styleChosenByUser: Bool
+    var musicTrackID: String
+    var musicChosenByUser: Bool
+    var customSong: SongChoice?
+    var originalAudio: Bool
 }
 
 /// Everything about the film being made.
@@ -234,16 +342,24 @@ final class ProjectDraft {
     /// Title and end credit (F14); empty means none.
     var title = ""
     var endCredit = ""
+    /// The user wrote or removed the title, so the director's title is not applied.
+    var titleChosenByUser = false
     /// The user's description for the AI director (F16).
     var instruction = ""
     /// The director's plan for `directorInstruction`, reused for new versions.
     var directorPlan: DirectorPlan?
     var directorInstruction = ""
+    /// The media the current film, and the director's plan, were made from.
+    var materialIDs: Set<String> = []
     /// The user picked the style themselves, so the director's suggestion is not applied.
     var styleChosenByUser = false
     /// The last description could not be followed.
     var directorFailed = false
+    /// The user reordered the clips of the current film.
+    var arrangedByUser = false
     var edl: EditDecisionList?
+    /// The media the saved thumbnail shows; nil until one is made in this session.
+    var thumbnailMediaID: String?
 
     init(id: UUID = UUID()) {
         self.id = id
@@ -270,10 +386,15 @@ final class ProjectDraft {
         exclusions = snapshot.exclusions
         title = snapshot.title
         endCredit = snapshot.endCredit
+        // Older projects did not record where the title came from; a title is then kept as it is.
+        titleChosenByUser = snapshot.titleChosenByUser ?? !snapshot.title.isEmpty
         instruction = snapshot.instruction ?? ""
         directorPlan = snapshot.directorPlan
         directorInstruction = snapshot.directorInstruction ?? ""
+        // Unknown in older projects, so their plan is made again once.
+        materialIDs = Set(snapshot.materialIDs ?? [])
         styleChosenByUser = snapshot.styleChosenByUser ?? false
+        arrangedByUser = snapshot.arrangedByUser ?? false
         edl = snapshot.edl
     }
 
@@ -299,8 +420,32 @@ final class ProjectDraft {
             instruction: instruction,
             directorPlan: directorPlan,
             directorInstruction: directorInstruction,
-            styleChosenByUser: styleChosenByUser
+            styleChosenByUser: styleChosenByUser,
+            titleChosenByUser: titleChosenByUser,
+            materialIDs: materialIDs.sorted(),
+            arrangedByUser: arrangedByUser
         )
+    }
+
+    /// The files in the project's folder this draft uses.
+    var fileNames: Set<String> {
+        var names = Set(media.map { $0.url.lastPathComponent })
+        if let customSong { names.insert(customSong.url.lastPathComponent) }
+        return names
+    }
+
+    /// Takes a newly generated film and what the run decided.
+    func adopt(_ output: GenerationOutput, from input: GenerationInput) {
+        analyses.merge(output.analyses) { _, new in new }
+        directorPlan = output.directorPlan
+        directorInstruction = input.instruction
+        materialIDs = Set(input.media.map(\.id))
+        directorFailed = output.directorFailed
+        // The film's song already follows a style the director chose, so the draft stays in step.
+        if output.style != style { select(style: output.style) }
+        if !titleChosenByUser { title = output.edl.title?.text ?? "" }
+        arrangedByUser = output.keptArrangement
+        edl = output.edl
     }
 
     var mediaItems: [MediaItem] { media.map(\.item) }
@@ -337,8 +482,32 @@ final class ProjectDraft {
 
     /// Keeps a director plan only while the description and material are the same.
     func forgetDirectorPlanIfStale() {
-        if directorInstruction != instructionInEffect { directorPlan = nil }
-        if let plan = directorPlan, !Set(plan.mediaIDs).isSubset(of: Set(media.map(\.id))) { directorPlan = nil }
+        if directorInstruction != instructionInEffect || materialIDs != Set(media.map(\.id)) { directorPlan = nil }
+    }
+
+    /// The user's clip order, kept when only the music or the sound changes (F11): same style,
+    /// version, length and material as the current film.
+    var userArrangement: [EDLClip]? {
+        guard arrangedByUser, let edl, edl.style == style, edl.seed == seed, edl.targetDuration == targetDuration,
+            materialIDs == Set(media.map(\.id))
+        else { return nil }
+        return edl.clips
+    }
+
+    var styleAndMusic: StyleAndMusic {
+        StyleAndMusic(
+            style: style, styleChosenByUser: styleChosenByUser, musicTrackID: musicTrackID,
+            musicChosenByUser: musicChosenByUser, customSong: customSong, originalAudio: originalAudio
+        )
+    }
+
+    func restore(_ choices: StyleAndMusic) {
+        style = choices.style
+        styleChosenByUser = choices.styleChosenByUser
+        musicTrackID = choices.musicTrackID
+        musicChosenByUser = choices.musicChosenByUser
+        customSong = choices.customSong
+        originalAudio = choices.originalAudio
     }
 
     /// The user chooses a style.
@@ -360,9 +529,18 @@ final class ProjectDraft {
         musicChosenByUser = true
     }
 
+    /// The song chosen for the next film.
     var song: SongChoice? {
         if let customSong, customSong.id == musicTrackID { return customSong }
         return (MusicCatalog.track(id: musicTrackID) ?? MusicCatalog.defaultTrack)?.choice
+    }
+
+    /// The song a clip list was timed to, which its film is built with: the cuts sit on that
+    /// song's beats even when another one has been chosen since. Nil for a film without music.
+    func song(for edl: EditDecisionList) -> SongChoice? {
+        guard let id = edl.music?.trackID else { return nil }
+        if let customSong, customSong.id == id { return customSong }
+        return MusicCatalog.track(id: id)?.choice
     }
 
     var mediaURLs: [String: URL] {

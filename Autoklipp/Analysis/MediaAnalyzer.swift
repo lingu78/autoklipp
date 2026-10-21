@@ -18,6 +18,9 @@ enum MediaAnalyzer {
     static let motionSide = 256
     /// Labels below this confidence are dropped.
     static let labelConfidence: Float = 0.3
+    /// Video frames requested from the generator at a time (8 s of video); bounds the frames
+    /// held in memory while they wait to be measured.
+    static let framesPerRequest = 16
 
     static func analyse(_ media: ImportedMedia) async throws -> MediaAnalysis {
         if media.item.kind == .video {
@@ -71,77 +74,94 @@ enum MediaAnalyzer {
         generator.requestedTimeToleranceBefore = tolerance
         generator.requestedTimeToleranceAfter = tolerance
 
-        var frames = [CGImage?](repeating: nil, count: count)
-        for await result in generator.images(for: times) {
-            try Task.checkCancellation()
-            if case let .success(requested, image, _) = result, let index = times.firstIndex(of: requested) {
-                frames[index] = image
+        // Segments are measured in time order as their frames arrive, a few frames per request, so
+        // memory stays the same however long the video is. Only the previous segment's grey copy
+        // and the three frames sampled for labels are kept.
+        let registration = TrackTranslationalImageRegistrationRequest()
+        // Camera displacement since the previous sample, as fractions of the frame width; nil
+        // where it could not be measured.
+        var displacements = [CGVector?](repeating: nil, count: count)
+        var segments: [SegmentAnalysis] = []
+        segments.reserveCapacity(count)
+        var previousArrived = false
+        var previousGray: GrayImage?
+        var lastFaces: [DetectedFace] = []
+        let labelPositions = Set([0, count / 2, count - 1])
+        var labelFrames: [Int: CGImage] = [:]
+
+        for chunkStart in stride(from: 0, to: count, by: framesPerRequest) {
+            let chunk = Array(times[chunkStart..<min(count, chunkStart + framesPerRequest)])
+            var frames: [Int: CGImage] = [:]
+            for await result in generator.images(for: chunk) {
+                try Task.checkCancellation()
+                if case let .success(requested, image, _) = result, let offset = chunk.firstIndex(of: requested) {
+                    frames[chunkStart + offset] = image
+                }
+            }
+
+            for position in chunkStart..<(chunkStart + chunk.count) {
+                try Task.checkCancellation()
+                let frame = frames.removeValue(forKey: position)
+                var metrics = FrameMetrics()
+                var signature: [Float]?
+                var gray: GrayImage?
+                if let frame {
+                    // The request is stateful: every frame goes through it, in time order.
+                    let alignment = try? await registration.perform(on: frame, orientation: nil)
+                    if previousArrived, let transform = alignment?.alignmentTransform {
+                        displacements[position] = CGVector(
+                            dx: transform.tx / CGFloat(frame.width), dy: transform.ty / CGFloat(frame.width)
+                        )
+                    }
+                    gray = GrayImage(frame, longSide: motionSide)
+                }
+                if let frame, let gray {
+                    if let detail = GrayImage(frame, longSide: proxySide) {
+                        metrics.sharpness = ImageMetrics.sharpness(detail)
+                        metrics.exposure = ImageMetrics.exposure(detail)
+                    }
+                    if let previousGray {
+                        // Compensate the camera move; the sign convention is not relied upon, the
+                        // best-aligned of the candidates is taken.
+                        let displacement = displacements[position] ?? .zero
+                        let dx = Int((displacement.dx * CGFloat(gray.width)).rounded())
+                        let dy = Int((displacement.dy * CGFloat(gray.width)).rounded())
+                        let candidates = [(dx, dy), (-dx, dy), (dx, -dy), (-dx, -dy)]
+                        metrics.motion = candidates.map { ImageMetrics.motion(previousGray, gray, dx: $0.0, dy: $0.1) }.min() ?? 0
+                    } else {
+                        metrics.motion = 0.3
+                    }
+                    // Faces once per second; the in-between segment reuses the last result.
+                    if position % 2 == 0 { lastFaces = await detectFaces(in: frame) }
+                    signature = ImageMetrics.colorSignature(frame)
+                } else {
+                    metrics.sharpness = 0
+                }
+                metrics.faceCount = lastFaces.count
+                metrics.faceQuality = lastFaces.map(\.quality).max() ?? 0
+                segments.append(
+                    SegmentAnalysis(
+                        start: Double(position) * Timing.segmentLength,
+                        duration: min(Timing.segmentLength, duration - Double(position) * Timing.segmentLength),
+                        metrics: metrics,
+                        signature: signature
+                    )
+                )
+                if let frame, labelPositions.contains(position) { labelFrames[position] = frame }
+                previousArrived = frame != nil
+                previousGray = gray
             }
         }
 
-        // Camera displacement between consecutive samples, as fractions of the frame width.
-        let registration = TrackTranslationalImageRegistrationRequest()
-        var displacements = [CGVector](repeating: .zero, count: count)
-        var grays = [GrayImage?](repeating: nil, count: count)
-        for (position, frame) in frames.enumerated() {
-            guard let frame else { continue }
-            grays[position] = GrayImage(frame, longSide: motionSide)
-            if position > 0, frames[position - 1] != nil,
-                let alignment = try? await registration.perform(on: frame, orientation: nil)
-            {
-                let transform = alignment.alignmentTransform
-                displacements[position] = CGVector(
-                    dx: transform.tx / CGFloat(frame.width), dy: transform.ty / CGFloat(frame.width)
-                )
-            } else {
-                _ = try? await registration.perform(on: frame, orientation: nil)
-            }
-        }
+        // Shake needs the displacements on both sides of a segment, loudness reads the sound.
         let shakes = ImageMetrics.shake(displacements: displacements)
         let loudness = (try? await audioLevels(asset: asset, segments: count)) ?? []
-
-        var segments: [SegmentAnalysis] = []
-        var lastFaces: [DetectedFace] = []
-        for position in 0..<count {
-            try Task.checkCancellation()
-            var metrics = FrameMetrics()
-            var signature: [Float]?
-            if let frame = frames[position], let gray = grays[position] {
-                if let detail = GrayImage(frame, longSide: proxySide) {
-                    metrics.sharpness = ImageMetrics.sharpness(detail)
-                    metrics.exposure = ImageMetrics.exposure(detail)
-                }
-                if position > 0, let previous = grays[position - 1] {
-                    // Compensate the camera move; the sign convention is not relied upon, the
-                    // best-aligned of the candidates is taken.
-                    let dx = Int((displacements[position].dx * CGFloat(gray.width)).rounded())
-                    let dy = Int((displacements[position].dy * CGFloat(gray.width)).rounded())
-                    let candidates = [(dx, dy), (-dx, dy), (dx, -dy), (-dx, -dy)]
-                    metrics.motion = candidates.map { ImageMetrics.motion(previous, gray, dx: $0.0, dy: $0.1) }.min() ?? 0
-                } else {
-                    metrics.motion = 0.3
-                }
-                // Faces once per second; the in-between segment reuses the last result.
-                if position % 2 == 0 { lastFaces = await detectFaces(in: frame) }
-                signature = ImageMetrics.colorSignature(frame)
-            } else {
-                metrics.sharpness = 0
-            }
-            metrics.faceCount = lastFaces.count
-            metrics.faceQuality = lastFaces.map(\.quality).max() ?? 0
-            metrics.shake = shakes.indices.contains(position) ? shakes[position] : 0
-            metrics.audioLevel = loudness.indices.contains(position) ? loudness[position] : nil
-            segments.append(
-                SegmentAnalysis(
-                    start: Double(position) * Timing.segmentLength,
-                    duration: min(Timing.segmentLength, duration - Double(position) * Timing.segmentLength),
-                    metrics: metrics,
-                    signature: signature
-                )
-            )
+        for position in segments.indices {
+            segments[position].metrics.shake = shakes.indices.contains(position) ? shakes[position] : 0
+            segments[position].metrics.audioLevel = loudness.indices.contains(position) ? loudness[position] : nil
         }
 
-        let sampled = [0, count / 2, count - 1].compactMap { frames.indices.contains($0) ? frames[$0] : nil }
+        let sampled = [0, count / 2, count - 1].compactMap { labelFrames[$0] }
         return MediaAnalysis(mediaID: media.id, segments: segments, labels: await labels(for: sampled))
     }
 

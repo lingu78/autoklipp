@@ -14,6 +14,8 @@ struct BuiltComposition: @unchecked Sendable {
         let item = AVPlayerItem(asset: composition)
         item.videoComposition = videoComposition
         item.audioMix = audioMix
+        // Slightly retimed original sound keeps its pitch, as in the export.
+        item.audioTimePitchAlgorithm = .spectral
         return item
     }
 }
@@ -30,8 +32,9 @@ struct RenderInputs: Sendable {
 /// change to the clip list is reflected by building again.
 ///
 /// Video clips alternate between two tracks so that neighbours can overlap during
-/// transitions; each clip is extended by half of each transition on either side when the
-/// source has footage to spare. Stills have no track: the compositor draws them.
+/// transitions; each clip is extended by half of each transition on either side, with footage
+/// the source has to spare or else by holding its first or last frame. Stills have no track:
+/// the compositor draws them.
 enum CompositionBuilder {
     enum BuildError: LocalizedError {
         case emptyEdit
@@ -74,8 +77,8 @@ enum CompositionBuilder {
         }
     }
 
-    /// Inserts `start..<end` of a source track (clamped to where it has media) at `at`.
-    /// Returns the inserted source range.
+    /// Inserts `start..<end` of a source track (clamped to where it has media) so that source
+    /// time `start` lands at `at`. Returns the range of the target track it now fills.
     @discardableResult
     private static func insert(
         _ start: Double, _ end: Double, of track: AVAssetTrack, available: CMTimeRange,
@@ -84,21 +87,39 @@ enum CompositionBuilder {
         let lower = CMTimeMaximum(time(start), available.start)
         let upper = CMTimeMinimum(time(end), available.end)
         let range = CMTimeRange(start: lower, end: upper)
-        guard range.duration > .zero else { return range }
-        // A track cannot take media after its end; fill the gap with an empty range first.
+        guard range.duration > .zero else { return CMTimeRange(start: time(at), duration: .zero) }
+        // A clamped start trims the head of the media instead of moving it earlier. Media is
+        // never inserted before the track's end: that would split what is there and push it
+        // later (separately rounded pieces can overlap by a tick).
         let trackEnd = target.segments.last?.timeMapping.target.end ?? .zero
-        if time(at) > trackEnd {
-            target.insertEmptyTimeRange(CMTimeRange(start: trackEnd, end: time(at)))
+        let position = CMTimeMaximum(CMTimeAdd(time(at), CMTimeSubtract(lower, time(start))), trackEnd)
+        // A track cannot take media after its end; fill the gap with an empty range first.
+        if position > trackEnd {
+            target.insertEmptyTimeRange(CMTimeRange(start: trackEnd, end: position))
         }
         do {
-            try target.insertTimeRange(range, of: track, at: time(at))
+            try target.insertTimeRange(range, of: track, at: position)
         } catch {
             throw BuildError.insertFailed(
-                "\(what()) [\(range.start.seconds)–\(range.end.seconds) of \(available.start.seconds)–\(available.end.seconds) at \(at)]",
+                "\(what()) [\(range.start.seconds)–\(range.end.seconds) of \(available.start.seconds)–\(available.end.seconds) at \(position.seconds)]",
                 error
             )
         }
-        return range
+        return CMTimeRange(start: position, duration: range.duration)
+    }
+
+    /// Retimes what `insert` put into a track so that it lasts `duration`.
+    private static func scale(_ inserted: CMTimeRange, of track: AVMutableCompositionTrack, to duration: CMTime) {
+        guard inserted.duration > .zero, duration > .zero, CMTimeCompare(inserted.duration, duration) != 0 else { return }
+        track.scaleTimeRange(inserted, toDuration: duration)
+    }
+
+    /// Cuts off whatever a track holds after `end`.
+    private static func trim(_ track: AVMutableCompositionTrack, to end: CMTime) {
+        let trackEnd = track.segments.last?.timeMapping.target.end ?? .zero
+        if trackEnd > end {
+            track.removeTimeRange(CMTimeRange(start: end, end: trackEnd))
+        }
     }
 
     static func build(_ inputs: RenderInputs) async throws -> BuiltComposition {
@@ -160,17 +181,22 @@ enum CompositionBuilder {
                     sources[clip.mediaID] = source
                 }
 
-                // Half of each neighbouring transition, where the source has footage for it.
+                // Half of each neighbouring transition, from footage the source has to spare.
+                // Where it has none, its first or last frame is held instead: an empty lane
+                // would blend the neighbour with black.
                 let rate = clip.playbackRate
-                let wantedBefore = clip.transitionIn.duration / 2
-                let wantedAfter = index + 1 < edl.clips.count ? edl.clips[index + 1].transitionIn.duration / 2 : 0
-                let before = max(0, min(wantedBefore, (clip.sourceStart - source.start) / rate, clip.timelineStart))
-                let after = max(0, min(wantedAfter, (source.end - clip.sourceEnd) / rate, edl.duration - clip.timelineEnd))
+                let wantedBefore = max(0, min(clip.transitionIn.duration / 2, clip.timelineStart))
+                let nextTransition = index + 1 < edl.clips.count ? edl.clips[index + 1].transitionIn.duration / 2 : 0
+                let wantedAfter = max(0, min(nextTransition, edl.duration - clip.timelineEnd))
+                let before = max(0, min(wantedBefore, (clip.sourceStart - source.start) / rate))
+                let after = max(0, min(wantedAfter, (source.end - clip.sourceEnd) / rate))
                 let sourceStart = max(source.start, clip.sourceStart - before * rate)
                 let sourceEnd = min(source.end, clip.sourceEnd + after * rate)
                 let compositionStart = clip.timelineStart - before
                 let compositionEnd = clip.timelineEnd + after
                 guard sourceEnd - sourceStart > 0.01, compositionEnd - compositionStart > 0.01 else { continue }
+                // How much the footage is stretched to fill its place in the film.
+                let stretch = (compositionEnd - compositionStart) / (sourceEnd - sourceStart)
 
                 let lane = videoCount % 2
                 let track = try videoTrack(lane)
@@ -180,21 +206,37 @@ enum CompositionBuilder {
                         soundTracks[lane] = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
                     }
                     if let soundTrack = soundTracks[lane] {
-                        try insert(
+                        let inserted = try insert(
                             sourceStart, sourceEnd, of: sound, available: source.soundRange,
                             into: soundTrack, at: compositionStart, what: "sound of clip \(index)"
                         )
+                        // Retimed like the picture, so it stays in sync with it.
+                        scale(inserted, of: soundTrack, to: CMTimeMultiplyByFloat64(inserted.duration, multiplier: stretch))
                         soundKeys[lane] += AudioMixPlan.clipKeyframes(for: edl, clipIndex: index)
                     }
                 }
-                let sourceRange = try insert(
-                    sourceStart, sourceEnd, of: source.track,
-                    available: CMTimeRange(start: time(source.start), end: time(source.end)),
+                let available = CMTimeRange(start: time(source.start), end: time(source.end))
+                let frame = 1 / Double(max(1, edl.frameRate))
+                let holdBefore = wantedBefore - before
+                if holdBefore >= frame / 2 {
+                    let held = try insert(
+                        sourceStart, min(sourceEnd, sourceStart + frame), of: source.track, available: available,
+                        into: track, at: compositionStart - holdBefore, what: "first frame of clip \(index) (\(clip.mediaID))"
+                    )
+                    scale(held, of: track, to: CMTimeSubtract(time(compositionStart), held.start))
+                }
+                let inserted = try insert(
+                    sourceStart, sourceEnd, of: source.track, available: available,
                     into: track, at: compositionStart, what: "clip \(index) (\(clip.mediaID))"
                 )
-                let wanted = time(compositionEnd - compositionStart)
-                if sourceRange.duration > .zero, CMTimeCompare(sourceRange.duration, wanted) != 0 {
-                    track.scaleTimeRange(CMTimeRange(start: time(compositionStart), duration: sourceRange.duration), toDuration: wanted)
+                scale(inserted, of: track, to: CMTimeSubtract(time(compositionEnd), inserted.start))
+                let holdAfter = wantedAfter - after
+                if holdAfter >= frame / 2, inserted.duration > .zero {
+                    let held = try insert(
+                        max(sourceStart, sourceEnd - frame), sourceEnd, of: source.track, available: available,
+                        into: track, at: compositionEnd, what: "last frame of clip \(index) (\(clip.mediaID))"
+                    )
+                    scale(held, of: track, to: CMTimeSubtract(time(compositionEnd + holdAfter), held.start))
                 }
                 content = .video(trackID: track.trackID, orientation: source.orientation)
             } else {
@@ -225,6 +267,7 @@ enum CompositionBuilder {
                         into: track, at: start, what: "music at \(start)"
                     )
                 }
+                trim(track, to: total)
                 // Full volume, lowered under loud original sound, faded out at the end.
                 let parameters = AVMutableAudioMixInputParameters(track: track)
                 apply(AudioMixPlan.musicKeyframes(for: edl), to: parameters)
@@ -239,6 +282,12 @@ enum CompositionBuilder {
         }
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = audioParameters
+
+        // Pieces rounded to 1/600 s one by one can end a tick or two after the film, but the
+        // video composition's only instruction must cover the whole asset.
+        for track in videoTracks + soundTracks.compactMap({ $0 }) {
+            trim(track, to: total)
+        }
 
         let renderSize = inputs.settings.renderSize
         let timeline = RenderTimeline(

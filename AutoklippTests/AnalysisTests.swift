@@ -39,6 +39,10 @@ struct AnalysisTests {
         let (media, analysis, folder) = try await analysedVideo()
         defer { try? FileManager.default.removeItem(at: folder) }
         #expect(analysis.segments.count == 32)
+        // The frames come in several requests; every segment still gets its own frame, in order.
+        #expect(analysis.segments.count > MediaAnalyzer.framesPerRequest)
+        #expect(analysis.segments.enumerated().allSatisfy { $1.start == Double($0) * Timing.segmentLength })
+        #expect(analysis.segments.allSatisfy { $0.signature != nil })
 
         let sharpSteady = mean(analysis, 0..<4) { $0.sharpness }
         let sharpBlurred = mean(analysis, 4..<8) { $0.sharpness }
@@ -65,6 +69,20 @@ struct AnalysisTests {
             let middle = clip.sourceStart + clip.sourceDuration / 2
             #expect(!(4.0..<12.0).contains(middle), "picked weak footage at \(clip.sourceStart)–\(clip.sourceEnd)")
         }
+    }
+
+    /// Displacements that were never measured (the first sample, next to a missing frame) do not
+    /// count as camera movement: a smooth pan is steady from its first second.
+    @Test func unmeasuredDisplacementsAreNotShake() {
+        let pan = CGVector(dx: 0.06, dy: 0)
+        let panning = ImageMetrics.shake(displacements: [nil, pan, pan, pan, nil, nil, pan, pan])
+        #expect(panning.count == 8)
+        #expect(panning.allSatisfy { $0 < 0.3 }, "\(panning)")
+
+        let right = CGVector(dx: 0.05, dy: -0.02)
+        let left = CGVector(dx: -0.05, dy: 0.02)
+        let jitter = ImageMetrics.shake(displacements: [nil, right, left, right, left])
+        #expect(jitter.allSatisfy { $0 > Scorer.shakeThreshold }, "\(jitter)")
     }
 
     @Test func stillsGetSharpnessExposureAndASignature() async throws {

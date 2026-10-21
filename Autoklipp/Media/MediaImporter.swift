@@ -35,12 +35,34 @@ struct PickedFile: Transferable {
 final class ImportProgress {
     var total = 0
     var finished = 0
-    var currentFraction = 0.0
     var isRunning = false
+    /// Download progress 0...1 of the items still loading, by index.
+    private var loading: [Int: Double] = [:]
+    private var done: Set<Int> = []
 
     var fraction: Double {
         guard total > 0 else { return 0 }
-        return min(1, (Double(finished) + currentFraction) / Double(total))
+        return min(1, (Double(finished) + loading.values.reduce(0, +)) / Double(total))
+    }
+
+    func start(total: Int) {
+        self.total = total
+        finished = 0
+        loading = [:]
+        done = []
+        isRunning = true
+    }
+
+    func report(_ fraction: Double, for index: Int) {
+        // Updates can arrive after their item has finished; it is already counted then.
+        guard !done.contains(index) else { return }
+        loading[index] = min(1, max(0, fraction))
+    }
+
+    func finish(_ index: Int) {
+        guard done.insert(index).inserted else { return }
+        loading[index] = nil
+        finished += 1
     }
 }
 
@@ -57,10 +79,7 @@ enum MediaImporter {
     /// Imports items in picker order, two at a time.
     @MainActor
     static func importItems(_ items: [PhotosPickerItem], storage: ProjectStorage, progress: ImportProgress) async -> Result {
-        progress.total = items.count
-        progress.finished = 0
-        progress.currentFraction = 0
-        progress.isRunning = true
+        progress.start(total: items.count)
         defer { progress.isRunning = false }
         do {
             try storage.prepare()
@@ -78,7 +97,7 @@ enum MediaImporter {
                 next += 1
                 group.addTask {
                     let imported = try? await importOne(item, storage: storage) { fraction in
-                        Task { @MainActor in progress.currentFraction = fraction }
+                        Task { @MainActor in progress.report(fraction, for: index) }
                     }
                     return (index, imported)
                 }
@@ -88,8 +107,7 @@ enum MediaImporter {
             while let finishedItem = await group.next() {
                 let (index, imported) = finishedItem
                 results[index] = imported
-                progress.finished += 1
-                progress.currentFraction = 0
+                progress.finish(index)
                 if Task.isCancelled { group.cancelAll() } else { enqueue() }
             }
         }
@@ -107,7 +125,13 @@ enum MediaImporter {
         let id = UUID().uuidString
         let extensionPart = picked.url.pathExtension.isEmpty ? (isVideo ? "mov" : "jpg") : picked.url.pathExtension
         let destination = storage.mediaDirectory.appending(path: "\(id).\(extensionPart)")
-        try FileManager.default.moveItem(at: picked.url, to: destination)
+        do {
+            try FileManager.default.moveItem(at: picked.url, to: destination)
+        } catch {
+            // The project folder can be gone (the draft was abandoned); the picked copy must not linger.
+            try? FileManager.default.removeItem(at: picked.url)
+            throw error
+        }
 
         do {
             if isVideo {

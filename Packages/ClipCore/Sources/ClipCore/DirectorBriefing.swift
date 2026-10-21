@@ -30,12 +30,18 @@ public struct DirectorAnswer: Sendable, Hashable {
     public var chapters: [Chapter]
     public var style: String?
     public var title: String?
+    /// Short ids of the clips this batch showed the model. Other ids are dropped, so an id the
+    /// model makes up cannot pull in a clip from another batch. Nil accepts every described clip.
+    public var offeredIDs: [String]?
 
-    public init(clipIDs: [String], chapters: [Chapter] = [], style: String? = nil, title: String? = nil) {
+    public init(
+        clipIDs: [String], chapters: [Chapter] = [], style: String? = nil, title: String? = nil, offeredIDs: [String]? = nil
+    ) {
         self.clipIDs = clipIDs
         self.chapters = chapters
         self.style = style
         self.title = title
+        self.offeredIDs = offeredIDs
     }
 }
 
@@ -105,14 +111,14 @@ public enum DirectorBriefing {
         max(1, (text.utf8.count + 3) / 4)
     }
 
-    /// Validates the answers (unknown ids dropped, duplicates removed) and merges batches in
-    /// their order. Returns nil when the model chose nothing usable.
+    /// Validates the answers (unknown ids and ids the batch did not offer dropped, duplicates
+    /// removed) and merges batches in their order. Returns nil when the model chose nothing usable.
     public static func plan(from answers: [DirectorAnswer], descriptions: [ClipDescription]) -> DirectorPlan? {
         let byShortID = Dictionary(descriptions.map { ($0.shortID.lowercased(), $0.mediaID) }, uniquingKeysWith: { first, _ in first })
-        func resolve(_ ids: [String], into seen: inout Set<String>) -> [String] {
+        func resolve(_ ids: [String], offered: Set<String>?, into seen: inout Set<String>) -> [String] {
             ids.compactMap { raw in
                 let key = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                guard let mediaID = byShortID[key], seen.insert(mediaID).inserted else { return nil }
+                guard offered?.contains(key) ?? true, let mediaID = byShortID[key], seen.insert(mediaID).inserted else { return nil }
                 return mediaID
             }
         }
@@ -121,14 +127,15 @@ public enum DirectorBriefing {
         var chapters: [DirectorChapter] = []
         var ordered: [String] = []
         for answer in answers {
+            let offered = answer.offeredIDs.map { Set($0.map { $0.lowercased() }) }
             // Chapters give the order when present; clips outside any chapter follow.
             for chapter in answer.chapters {
-                let ids = resolve(chapter.clipIDs, into: &seen)
+                let ids = resolve(chapter.clipIDs, offered: offered, into: &seen)
                 guard !ids.isEmpty else { continue }
                 chapters.append(DirectorChapter(title: chapter.title.trimmingCharacters(in: .whitespacesAndNewlines), mediaIDs: ids))
                 ordered += ids
             }
-            ordered += resolve(answer.clipIDs, into: &seen)
+            ordered += resolve(answer.clipIDs, offered: offered, into: &seen)
         }
         guard !ordered.isEmpty else { return nil }
 

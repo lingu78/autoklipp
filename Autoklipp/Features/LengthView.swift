@@ -37,7 +37,8 @@ struct LengthView: View {
                     }
                 }
 
-                let maximum = Planner.maximumDuration(of: draft.mediaItems)
+                // Stills are shown for whole beats of the song, so the song decides how long they can be.
+                let maximum = Planner.maximumDuration(of: draft.mediaItems, beatPeriod: draft.song.map { 60 / max(1, $0.info.bpm) })
                 if draft.targetDuration > maximum + Timing.lengthTolerance {
                     Label(
                         "Your photos and videos are enough for about \(Formatting.duration(maximum)). The film will be shorter unless you add more.",

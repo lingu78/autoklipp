@@ -14,14 +14,23 @@ actor BlankVideo {
     }
 
     private var cached: URL?
+    /// The file being written. Callers arriving meanwhile wait for it: the actor lets them in
+    /// while the writer is suspended, and a second write would replace the file under the first.
+    private var writing: Task<URL, any Error>?
 
     func url() async throws -> URL {
         if let cached, FileManager.default.fileExists(atPath: cached.path) { return cached }
+        if let writing { return try await writing.value }
         let url = URL.cachesDirectory.appending(path: "blank-v1.mov")
-        if !FileManager.default.fileExists(atPath: url.path) {
-            try await Self.write(to: url)
+        let task = Task<URL, any Error> {
+            if !FileManager.default.fileExists(atPath: url.path) {
+                try await Self.write(to: url)
+            }
+            return url
         }
-        cached = url
+        writing = task
+        defer { writing = nil }
+        cached = try await task.value
         return url
     }
 

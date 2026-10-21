@@ -12,6 +12,10 @@ struct ClipStripView: View {
     let isBusy: Bool
     let onSelect: (EDLClip) -> Void
     let onEdit: (ClipEdit) -> Void
+    /// The duration label under each tile grows with Dynamic Type; the tile itself does not.
+    @ScaledMetric(relativeTo: .caption2) private var labelHeight: CGFloat = 17
+    @State private var userScrolling = false
+    @State private var userScrolledAt = Date.distantPast
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -25,18 +29,34 @@ struct ClipStripView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 4)
             }
+            .onScrollPhaseChange { _, phase in
+                let byUser: Bool
+                switch phase {
+                case .tracking, .interacting, .decelerating: byUser = true
+                default: byUser = false
+                }
+                if byUser || userScrolling { userScrolledAt = .now }
+                userScrolling = byUser
+            }
             .onChange(of: playingClipID) { _, id in
-                guard let id else { return }
+                // The strip follows the film, but not while the user is looking for a clip.
+                guard let id, !userScrolling, Date.now.timeIntervalSince(userScrolledAt) > 3 else { return }
                 withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
             }
         }
-        .frame(height: 92)
+        .frame(height: 75 + labelHeight)
         .opacity(isBusy ? 0.6 : 1)
         .allowsHitTesting(!isBusy)
     }
 
     private var playingClipID: String? {
         clips.last { $0.timelineStart <= currentTime + 0.01 }?.id
+    }
+
+    /// Hands an edit on unless one is still being made; VoiceOver actions bypass hit testing.
+    private func edit(_ edit: ClipEdit) {
+        guard !isBusy else { return }
+        onEdit(edit)
     }
 
     private func tile(_ clip: EDLClip, index: Int) -> some View {
@@ -47,26 +67,26 @@ struct ClipStripView: View {
                     .frame(width: 64, height: 84)
             }
             .dropDestination(for: String.self) { ids, _ in
-                guard let id = ids.first, id != clip.id else { return false }
-                onEdit(.move(clipID: id, toIndex: index))
+                guard !isBusy, let id = ids.first, id != clip.id else { return false }
+                edit(.move(clipID: id, toIndex: index))
                 return true
             }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 24).onEnded { value in
                     // A clear upward swipe removes the clip; sideways drags scroll the strip.
                     if value.translation.height < -50, abs(value.translation.width) < abs(value.translation.height) {
-                        onEdit(.remove(clipID: clip.id))
+                        edit(.remove(clipID: clip.id))
                     }
                 }
             )
             .contextMenu {
                 Button {
-                    onEdit(.setLocked(clipID: clip.id, !clip.isLocked))
+                    edit(.setLocked(clipID: clip.id, !clip.isLocked))
                 } label: {
                     clip.isLocked ? Label("Unlock", systemImage: "lock.open") : Label("Lock", systemImage: "lock")
                 }
                 Button(role: .destructive) {
-                    onEdit(.remove(clipID: clip.id))
+                    edit(.remove(clipID: clip.id))
                 } label: {
                     Label("Remove", systemImage: "trash")
                 }
@@ -75,16 +95,16 @@ struct ClipStripView: View {
             .accessibilityLabel(accessibilityLabel(clip, index: index))
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: clip.isLocked ? Text("Unlock") : Text("Lock")) {
-                onEdit(.setLocked(clipID: clip.id, !clip.isLocked))
+                edit(.setLocked(clipID: clip.id, !clip.isLocked))
             }
             .accessibilityAction(named: Text("Move earlier")) {
-                if index > 0 { onEdit(.move(clipID: clip.id, toIndex: index - 1)) }
+                if index > 0 { edit(.move(clipID: clip.id, toIndex: index - 1)) }
             }
             .accessibilityAction(named: Text("Move later")) {
-                if index + 1 < clips.count { onEdit(.move(clipID: clip.id, toIndex: index + 1)) }
+                if index + 1 < clips.count { edit(.move(clipID: clip.id, toIndex: index + 1)) }
             }
             .accessibilityAction(named: Text("Remove")) {
-                onEdit(.remove(clipID: clip.id))
+                edit(.remove(clipID: clip.id))
             }
     }
 

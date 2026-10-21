@@ -63,4 +63,15 @@ struct ProjectSnapshot: Codable, Sendable {
     var directorPlan: DirectorPlan?
     var directorInstruction: String?
     var styleChosenByUser: Bool?
+    var titleChosenByUser: Bool?
+    /// Media ids the film and the director's plan were made from.
+    var materialIDs: [String]?
+    var arrangedByUser: Bool?
+
+    /// The files in the project's folder the saved film uses.
+    var fileNames: Set<String> {
+        var names = Set(media.map(\.fileName))
+        if let customSong { names.insert(customSong.fileName) }
+        return names
+    }
 }

@@ -134,6 +134,12 @@ STRINGS = {
         "en": {"one": "%lld clip", "other": "%lld clips"},
         "sv": {"one": "%lld klipp", "other": "%lld klipp"},
     },
+    "The film could not be made. A photo or video may be missing.":
+        "Filmen gick inte att göra. En bild eller film kan saknas.",
+    "The film could not be exported. Try again.": "Filmen gick inte att exportera. Försök igen.",
+    "The export was interrupted": "Exporten avbröts",
+    "Autoklipp was in the background for too long. Keep the app open while the film is exported.":
+        "Autoklipp var i bakgrunden för länge. Låt appen vara öppen medan filmen exporteras.",
 }
 
 INFO_PLIST = {

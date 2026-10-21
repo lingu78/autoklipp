@@ -10,6 +10,8 @@ struct MediaSelectionView: View {
     @State private var importTask: Task<Void, Never>?
     /// Picker identifiers of items already imported, mapped to media ids.
     @State private var importedIdentifiers: [String: String] = [:]
+    /// Picker identifiers of selected items that could not be imported.
+    @State private var failedIdentifiers: Set<String> = []
 
     private var draft: ProjectDraft { model.draft }
 
@@ -50,9 +52,14 @@ struct MediaSelectionView: View {
                 }
 
                 if draft.skippedCount > 0 {
-                    Label("\(draft.skippedCount) items could not be read and were skipped.", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                    // Only the icon is orange: orange text on white is too faint to read.
+                    Label {
+                        Text("\(draft.skippedCount) items could not be read and were skipped.")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+                    .font(.footnote)
                 }
 
                 if !draft.media.isEmpty {
@@ -90,6 +97,7 @@ struct MediaSelectionView: View {
                         importTask?.cancel()
                         selection = []
                         importedIdentifiers = [:]
+                        failedIdentifiers = []
                         model.startOver()
                     }
                 }
@@ -99,6 +107,9 @@ struct MediaSelectionView: View {
             importTask?.cancel()
             importTask = Task { await sync(with: newSelection) }
         }
+        // Leaving mid-import (Next is disabled meanwhile) stops copying into a draft that may be
+        // abandoned and removed.
+        .onDisappear { importTask?.cancel() }
     }
 
     private var summary: some View {
@@ -117,13 +128,15 @@ struct MediaSelectionView: View {
         let draft = model.draft
         let wanted = items.map { $0.itemIdentifier ?? UUID().uuidString }
         let keep = Set(wanted)
+        // The copied file stays: a saved version of the project may still use it. AppModel
+        // removes files no project uses when the project is saved or left.
         for (identifier, mediaID) in importedIdentifiers where !keep.contains(identifier) {
-            if let media = draft.media.first(where: { $0.id == mediaID }) {
-                try? FileManager.default.removeItem(at: media.url)
-            }
             draft.media.removeAll { $0.id == mediaID }
             importedIdentifiers[identifier] = nil
         }
+        // Each selected item that failed counts once, and a deselected one no longer counts.
+        failedIdentifiers.formIntersection(keep)
+        draft.skippedCount = failedIdentifiers.count
 
         let fresh = zip(items, wanted).filter { importedIdentifiers[$0.1] == nil }
         guard !fresh.isEmpty else {
@@ -133,11 +146,15 @@ struct MediaSelectionView: View {
         let result = await MediaImporter.importItems(fresh.map(\.0), storage: draft.storage, progress: progress)
         guard !Task.isCancelled, draft === model.draft else { return }
         for ((_, identifier), media) in zip(fresh, result.items) {
-            guard let media else { continue }
+            guard let media else {
+                failedIdentifiers.insert(identifier)
+                continue
+            }
+            failedIdentifiers.remove(identifier)
             importedIdentifiers[identifier] = media.id
             draft.media.append(media)
         }
-        draft.skippedCount += result.skipped
+        draft.skippedCount = failedIdentifiers.count
         reorder(draft, by: wanted)
     }
 

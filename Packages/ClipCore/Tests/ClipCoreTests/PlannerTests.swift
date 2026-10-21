@@ -52,11 +52,69 @@ struct PlannerLengthTests {
         let media = Fixtures.mixedMedia(photos: 30, videoDurations: [10, 20])
         for style in StyleID.allCases {
             let edl = Planner.plan(Fixtures.request(media: media, target: 60, style: style))
-            // The very last clip may be trimmed to end the film.
-            for clip in edl.clips.dropLast() where clip.kind.isStill {
+            // The last clip too, although it is cut to end the film.
+            for clip in edl.clips where clip.kind.isStill {
                 #expect(Timing.stillRange.contains(clip.duration), "\(style): still shown \(clip.duration) s")
             }
         }
+    }
+
+    @Test func theLastClipIsNotCutBelowItsMinimum() {
+        // 8 stills of four beats end just short of 15 s; a ninth would be cut to under half a second.
+        let photos = Fixtures.mixedMedia(photos: 20, videoDurations: [])
+        let edl = Planner.plan(Fixtures.request(media: photos, target: 15, style: .energetic, bpm: 132))
+        #expect(abs(edl.duration - 15) <= Timing.lengthTolerance)
+        #expect(Timing.stillRange.contains(edl.clips.last!.duration), "last still shown \(edl.clips.last!.duration) s")
+
+        let mixed = Fixtures.mixedMedia(photos: 12, videoDurations: [20, 25, 30, 15, 40])
+        for style in StyleID.allCases {
+            for bpm in [72.0, 96, 104, 120, 128, 132, 138] {
+                for target in [15.0, 30, 45, 60] {
+                    for media in [photos, mixed] {
+                        let edl = Planner.plan(Fixtures.request(media: media, target: target, style: style, bpm: bpm))
+                        expectWellFormed(edl, media: media)
+                        #expect(abs(edl.duration - target) <= Timing.lengthTolerance)
+                        let last = edl.clips.last!
+                        if last.kind.isStill {
+                            #expect(Timing.stillRange.contains(last.duration), "\(style) \(bpm) BPM \(target) s: last still \(last.duration) s")
+                        } else {
+                            #expect(last.duration >= Timing.minVideoClip - 1e-6, "\(style) \(bpm) BPM \(target) s: last video \(last.duration) s")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func leftoverFootageIsNotTakenFromNeighbours() {
+        // Material runs short: the planner must not squeeze extra moments between clips that
+        // already play that footage, which would slow them down and mute them.
+        let media = Fixtures.mixedMedia(photos: 3, videoDurations: [18])
+        for seed in UInt64(0)..<40 {
+            var request = Fixtures.request(media: media, target: 30, style: .travel, bpm: 72, seed: seed)
+            request.originalAudio = true
+            let edl = Planner.plan(request)
+            expectWellFormed(edl, media: media)
+            for clip in edl.clips where clip.kind == .video {
+                #expect(clip.playbackRate > 0.99, "seed \(seed): \(clip.id) plays at \(clip.playbackRate)")
+                #expect(clip.audioVolume > 0)
+            }
+            // The video is still used for the most part.
+            let footage = edl.clips.filter { $0.kind == .video }.reduce(0) { $0 + $1.sourceDuration }
+            #expect(footage >= 0.8 * 18, "seed \(seed): \(footage) s of the video used")
+            #expect(edl.notices.contains { if case .materialShorterThanTarget = $0 { true } else { false } })
+        }
+    }
+
+    @Test func maximumDurationCountsWholeBeatsPerStill() {
+        let photos = Fixtures.mixedMedia(photos: 10, videoDurations: [])
+        #expect(Planner.maximumDuration(of: photos) == 40)
+        let period = 60.0 / 104
+        let maximum = Planner.maximumDuration(of: photos, beatPeriod: period)
+        // At 104 BPM a still lasts at most six beats.
+        #expect(abs(maximum - 10 * 6 * period) < 1e-9)
+        let edl = Planner.plan(Fixtures.request(media: photos, target: maximum.rounded(.down), bpm: 104))
+        #expect(abs(edl.duration - maximum.rounded(.down)) <= Timing.lengthTolerance)
     }
 
     @Test func energeticAt120BPMCutsAboutOncePerSecond() {
@@ -236,6 +294,24 @@ struct PlannerOrderTests {
         let edl = Planner.plan(request)
         #expect(Set(lockedIDs).isSubset(of: Set(edl.clips.map(\.mediaID))))
         #expect(abs(edl.duration - 15) <= Timing.lengthTolerance)
+    }
+
+    @Test func lockedClipsAreKeptWhenTheyDoNotFitTheLength() {
+        let media = Fixtures.mixedMedia(photos: 30, videoDurations: [])
+        let first = Planner.plan(Fixtures.request(media: media, target: 60))
+        let locked = first.clips.prefix(12).map { clip -> EDLClip in
+            var clip = clip
+            clip.isLocked = true
+            return clip
+        }
+        // Twelve stills need at least 18 s, more than the 15 s asked for.
+        var request = Fixtures.request(media: media, target: 15, seed: 3)
+        request.lockedClips = locked
+        let edl = Planner.plan(request)
+        expectWellFormed(edl, media: media)
+        #expect(Set(locked.map(\.id)).isSubset(of: Set(edl.clips.map(\.id))))
+        #expect(edl.clips.allSatisfy { Timing.stillRange.contains($0.duration) })
+        #expect(edl.duration > 15)
     }
 
     @Test func excludedMediaAndRangesNeverAppear() {

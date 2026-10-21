@@ -39,6 +39,22 @@ struct MetadataTests {
         #expect(throws: (any Error).self) { try MediaMetadataReader.readImage(at: image) }
     }
 
+    /// Two items load at once: both count towards the bar, and an update that arrives after its
+    /// item has finished does not count it twice.
+    @Test @MainActor func importProgressAddsUpParallelLoads() {
+        let progress = ImportProgress()
+        progress.start(total: 4)
+        progress.report(0.5, for: 0)
+        progress.report(0.5, for: 1)
+        #expect(abs(progress.fraction - 0.25) < 1e-9)
+        progress.finish(0)
+        progress.report(1, for: 0)
+        #expect(progress.finished == 1)
+        #expect(abs(progress.fraction - 0.375) < 1e-9)
+        progress.finish(1)
+        #expect(abs(progress.fraction - 0.5) < 1e-9)
+    }
+
     @Test func exifDatesHonourTheirOffset() {
         let date = MediaMetadataReader.exifDate("2026:07:14 18:00:00", offset: "+02:00")
         #expect(date == ISO8601DateFormatter().date(from: "2026-07-14T16:00:00Z"))

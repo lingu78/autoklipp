@@ -44,12 +44,18 @@ struct RenderTimeline: Sendable {
 extension CGImagePropertyOrientation {
     /// The EXIF orientation matching a video track's preferred transform.
     init(videoTransform transform: CGAffineTransform) {
-        let quarterTurns = Int((atan2(Double(transform.b), Double(transform.a)) / (Double.pi / 2)).rounded())
+        let a = Double(transform.a)
+        let b = Double(transform.b)
+        // A negative determinant means the picture is also flipped. The turn is then what is
+        // left once a horizontal flip is undone.
+        let mirrored = a * Double(transform.d) - b * Double(transform.c) < 0
+        let angle = mirrored ? atan2(-b, -a) : atan2(b, a)
+        let quarterTurns = Int((angle / (Double.pi / 2)).rounded())
         switch (quarterTurns + 4) % 4 {
-        case 1: self = .right
-        case 2: self = .down
-        case 3: self = .left
-        default: self = .up
+        case 1: self = mirrored ? .rightMirrored : .right
+        case 2: self = mirrored ? .downMirrored : .down
+        case 3: self = mirrored ? .leftMirrored : .left
+        default: self = mirrored ? .upMirrored : .up
         }
     }
 }

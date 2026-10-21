@@ -89,6 +89,11 @@ struct RhythmTests {
         }
     }
 
+    /// Only the start of a long song is decoded, but always enough for the longest film.
+    @Test func songAnalysisCoversTheLongestFilm() {
+        #expect(AudioAnalyzer.maximumDuration >= AutoLength.range.upperBound + Timing.lengthTolerance)
+    }
+
     @Test func stylesLookAndPaceDifferently() throws {
         // Pace: average clip length per style on the same material and song.
         let song = try #require(MusicCatalog.track(id: "sommarvind")?.choice)
