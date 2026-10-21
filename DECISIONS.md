@@ -43,6 +43,9 @@ Format: **Beslut** – motivering – (datum, fas).
 - **TestFlight utan Mac:** arbetsflödet `testflight.yml` arkiverar, signerar automatiskt med en
   App Store Connect API-nyckel och laddar upp. Engångsstegen som kräver ägarens konto står i
   `RELEASE.md`. (2026-10-20)
+- **Arkivet byggs osignerat och signeras först vid uppladdningen** med ett distributionscertifikat
+  som Apple sköter i molnet. Automatisk signering signerar annars arkivet för utveckling först,
+  och det kräver en registrerad iPhone på kontot (första körningen stoppade på det). (2026-10-21)
 
 ## 3. Mediaval och metadata
 
@@ -259,6 +262,13 @@ Format: **Beslut** – motivering – (datum, fas).
 - **En ny version öppnas ovanpå förhandsvisningen.** Avbryts eller misslyckas den kommer användaren tillbaka till filmen som visades, med dess stil, musik och frö. (2026-10-21, granskning)
 - **Ändringar i klippremsan och av titel/eftertext bygger alltid på den senaste ändringen,** och bara den nyaste förhandsvisningen visas. Under tiden är remsan (även VoiceOver-åtgärderna), knapparna under spelaren och titelknappen avstängda. (2026-10-21, granskning)
 - **Kopierade filer städas:** ett utkast som aldrig sparats tas bort vid Ny film, när ett annat projekt öppnas och vid nästa start; filer som varken utkastet eller den sparade kopian använder tas bort när projektet sparas, öppnas eller lämnas. Miniatyren i projektlistan följer filmens första klipp. (2026-10-21, granskning)
+
+- **Startskärmen** är en landningssida i appikonens färger: ikonens tre bildrutor ritade i SwiftUI
+  (de fälls ut när appen öppnas) på en långsamt rörlig gradient, appens namn, en mening om vad den
+  gör och en stor knapp för ny film. Under den ligger sparade filmer som kort med miniatyr och längd
+  (håll inne för att radera, med bekräftelse) och tre korta steg om hur det fungerar, samt att allt
+  bearbetas på telefonen. Rörelserna stängs av med Minska rörelse; VoiceOver och stor text stöds.
+  Ett skärmdumpstest ritar sidan i CI så att den kan granskas utan Mac. (2026-10-21)
 
 ## 6d. Apple Intelligence som regissör (fas 5)
 

@@ -81,6 +81,7 @@ jobs:
         env:
           TEST_RUNNER_AUTOKLIPP_CI: "1"
           TEST_RUNNER_AUTOKLIPP_FACE_IMAGE: ${{ runner.temp }}/portrait.jpg
+          TEST_RUNNER_AUTOKLIPP_SCREENSHOTS: ${{ runner.temp }}/screenshots
         run: |
           set +e
           # One test at a time: the runner has three cores and the export tests are heavy.
@@ -95,6 +96,20 @@ jobs:
           grep -E '^(.*\] )?[a-zA-Z ]+: .* (ms|s)$|BPM detected|took|after [0-9]|sharpness|shake|average clip' xcodebuild.log | grep -v '◇' | tail -n 60
           if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
           exit $status
+      - name: Screenshots
+        # The start screen, drawn by ScreenshotTests; small copies are logged as base64 lines.
+        if: always()
+        run: |
+          ls -la "$RUNNER_TEMP/screenshots" 2>/dev/null || echo "no screenshots"
+          grep -o 'SCREENSHOT:[A-Za-z0-9:+/=_-]*' xcodebuild.log 2>/dev/null || true
+      - name: Keep screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Build for device (unsigned)
         run: |
           set -o pipefail
