@@ -1,0 +1,33 @@
+name: Xcode 27 probe
+
+# Temporary: shows what the Xcode 27 runner image offers (Xcode versions, iOS 27.1 and
+# iPhone Duo simulator runtimes, simctl commands for the hinge) before CI depends on it.
+on:
+  push:
+    paths:
+      - .github/workflows/xcode27-probe.yml
+
+jobs:
+  probe:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - name: Machine and Xcode
+        run: |
+          sw_vers
+          uname -m
+          ls -d /Applications/Xcode* || true
+          xcodebuild -version || true
+          xcode-select -p
+      - name: Simulator runtimes and device types
+        run: |
+          xcrun simctl list runtimes
+          xcrun simctl list devicetypes | grep -iE "duo|iphone 1[67]" || true
+          xcrun simctl list devices available | grep -iE "duo|iphone 17" || true
+      - name: simctl commands
+        run: |
+          xcrun simctl help 2>&1 | head -80
+          for command in hinge pose fold display io ui; do
+            echo "== simctl help $command"
+            xcrun simctl help "$command" 2>&1 | head -40
+          done
