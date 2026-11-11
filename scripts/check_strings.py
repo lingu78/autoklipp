@@ -12,7 +12,7 @@ CATALOG = os.path.join(APP, "Resources", "Localizable.xcstrings")
 
 CALL = re.compile(
     r'\b(Text|Button|Label|Section|navigationTitle|ContentUnavailableView|Picker|Toggle|TextField|LocalizedStringKey|'
-    r'String\(localized:|LocalizedStringResource)\(?\s*"((?:[^"\\]|\\.)*)"'
+    r'String\(localized:|LocalizedStringResource|FlowAction|primaryButton)\(?\s*"((?:[^"\\]|\\.)*)"'
 )
 FORMAT = re.compile(r"%(lld|ld|d|@|lf|f)")
 

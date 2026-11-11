@@ -18,10 +18,27 @@ enum Route: Hashable {
 @MainActor
 @Observable
 final class AppModel {
+    /// Where in the flow the user is; the one-column layout shows it as a navigation stack.
     var path: [Route] = []
+    /// A sheet over the film; on a large display the same state is a step in the side panel.
+    private(set) var sheet: PreviewSheet?
+    /// The layout on screen now, kept up to date by RootView. Only playback depends on it.
+    var layout: FlowLayout = .stack
     private(set) var draft: ProjectDraft
+    /// The Photos selection of the current project and its import.
+    private(set) var imports: MediaImportSession
     /// The film currently shown in the preview.
     var preview: PreviewSession?
+    /// The film being made, if any.
+    private(set) var generation: GenerationJob?
+    /// The export being set up or running, while its sheet or step is open.
+    private(set) var export: ExportJob?
+    /// The title and end credit being edited.
+    var texts: TextsDraft?
+    /// The style and music before a change of the film started; put back unless the film is made again.
+    private(set) var choicesBeforeChange: StyleAndMusic?
+    /// What to put back if a new version is cancelled or fails.
+    private var beforeRegeneration: Regeneration?
     let container: ModelContainer
     /// How long the last clip-strip edit took until the new preview was ready.
     private(set) var lastEditDuration: Duration?
@@ -38,7 +55,9 @@ final class AppModel {
     }
 
     init(inMemory: Bool = false) {
-        draft = ProjectDraft()
+        let draft = ProjectDraft()
+        self.draft = draft
+        imports = MediaImportSession(draft: draft)
         // The store lives in Application Support, which does not exist on a fresh install.
         if !inMemory {
             try? FileManager.default.createDirectory(at: .applicationSupportDirectory, withIntermediateDirectories: true)
@@ -69,8 +88,35 @@ final class AppModel {
     func newProject() {
         closePreview()
         leave(draft)
-        draft = ProjectDraft()
+        replaceDraft(with: ProjectDraft())
         path = [.media]
+    }
+
+    /// Makes another project the current one; whatever was running for the last one stops.
+    private func replaceDraft(with newDraft: ProjectDraft) {
+        stopFlow()
+        draft = newDraft
+        imports = MediaImportSession(draft: newDraft)
+    }
+
+    /// Stops the work of the flow and closes its sheets.
+    private func stopFlow() {
+        imports.cancel()
+        generation?.task?.cancel()
+        generation = nil
+        beforeRegeneration = nil
+        export?.cancel()
+        export = nil
+        sheet = nil
+        texts = nil
+        choicesBeforeChange = nil
+    }
+
+    /// The user went back to the start screen.
+    func leftFlow() {
+        guard path.isEmpty else { return }
+        stopFlow()
+        preview?.player.pause()
     }
 
     /// Throws away the current project, including its copied media and any saved copy.
@@ -80,7 +126,7 @@ final class AppModel {
         closePreview()
         if let saved = savedProject(id: id) { context.delete(saved) }
         try? context.save()
-        draft = ProjectDraft()
+        replaceDraft(with: ProjectDraft())
         path = [.media]
         Task.detached { storage.removeAll() }
     }
@@ -92,7 +138,7 @@ final class AppModel {
         }
         closePreview()
         if draft.id != project.id { leave(draft) }
-        draft = ProjectDraft(id: project.id, restoring: snapshot)
+        replaceDraft(with: ProjectDraft(id: project.id, restoring: snapshot))
         // Copies from an earlier visit that was never saved.
         removeUnusedFiles(in: draft.storage, keeping: snapshot.fileNames)
         path = draft.edl == nil ? [.media] : [.preview]
@@ -102,7 +148,7 @@ final class AppModel {
         let storage = ProjectStorage(projectID: project.id)
         if draft.id == project.id {
             closePreview()
-            draft = ProjectDraft()
+            replaceDraft(with: ProjectDraft())
             path = []
         }
         context.delete(project)
@@ -219,8 +265,11 @@ final class AppModel {
         guard preview == nil, let edl = draft.edl else { return }
         do {
             let built = try await FilmGenerator.build(edl, media: draft.media, song: draft.song(for: edl), settings: .preview(draft.format))
-            guard draft.edl == edl else { return }
-            preview = PreviewSession(edl: edl, built: built)
+            // The views ask again when the layout changes; only the first finished build is kept.
+            guard draft.edl == edl, preview == nil, !Task.isCancelled else { return }
+            let session = PreviewSession(edl: edl, built: built)
+            preview = session
+            if isFilmOnScreen { session.player.play() }
         } catch {
             // Not for a film the user left (or deleted) before it was ready.
             if draft.edl == edl, !Task.isCancelled { message = Self.buildFailedMessage }
@@ -283,10 +332,137 @@ final class AppModel {
             let seekTime = focus.flatMap { id in edl.clips.first { $0.id == id }?.timelineStart }
             await session.replace(edl: edl, built: built, seekTo: seekTime)
             // The user went back or opened another film meanwhile: this one must not play unseen.
-            if path.last != .preview || preview !== session { session.player.pause() }
+            if !isFilmOnScreen || preview !== session { session.player.pause() }
         } catch {
             // Reported only for the film still shown, the same as a finished result.
             if draft.edl == edl, preview === session { message = Self.buildFailedMessage }
+        }
+    }
+
+    // MARK: Making the film
+
+    /// Makes the film (again); locked clips and removed footage are respected (F12). From the
+    /// preview, the new version opens over the film shown, so cancelling it comes back there.
+    func createFilm(newVersion: Bool = false) {
+        guard generation == nil, !draft.media.isEmpty else { return }
+        if let session = preview, path.last == .preview {
+            beforeRegeneration = Regeneration(
+                session: ObjectIdentifier(session), choices: choicesBeforeChange ?? draft.styleAndMusic, seed: draft.seed
+            )
+        } else {
+            beforeRegeneration = nil
+        }
+        choicesBeforeChange = nil
+        if sheet == .style || sheet == .music { sheet = nil }
+        if newVersion { draft.seed = UInt64.random(in: 1...UInt64.max) }
+        preview?.player.pause()
+        draft.forgetDirectorPlanIfStale()
+        let job = GenerationJob(steps: GenerationStep.steps(directed: !draft.instructionInEffect.isEmpty && draft.directorPlan == nil))
+        generation = job
+        path.append(.generate)
+        job.task = Task { await self.generate(job) }
+    }
+
+    private func generate(_ job: GenerationJob) async {
+        let draft = self.draft
+        let input = GenerationInput(draft: draft)
+        let settings = RenderSettings.preview(draft.format)
+        do {
+            let output = try await FilmGenerator.generate(input, settings: settings) { step, fraction in
+                await MainActor.run {
+                    job.step = step
+                    job.fraction = fraction
+                }
+            }
+            try Task.checkCancellation()
+            guard generation === job, draft === self.draft else { return }
+            draft.adopt(output, from: input)
+            preview?.player.pause()
+            let session = PreviewSession(edl: output.edl, built: output.built)
+            preview = session
+            save()
+            beforeRegeneration = nil
+            generation = nil
+            if path.last == .generate {
+                path.removeLast()
+                // A new version replaces the film in the preview underneath.
+                if path.last != .preview { path.append(.preview) }
+            }
+            if isFilmOnScreen { session.player.play() }
+        } catch is CancellationError {
+            return
+        } catch {
+            guard generation === job, !Task.isCancelled else { return }
+            job.errorMessage = (error as? FilmGenerator.GenerationError)?.errorDescription ?? Self.buildFailedMessage
+        }
+    }
+
+    /// Back to where the run started (Cancel, or Back after an error): the style step, or the
+    /// film shown before, which gets back the choices it was made with.
+    func cancelGeneration() {
+        guard let job = generation else { return }
+        job.task?.cancel()
+        generation = nil
+        if path.last == .generate { path.removeLast() }
+        if let before = beforeRegeneration, path.last == .preview, let session = preview, ObjectIdentifier(session) == before.session {
+            draft.restore(before.choices)
+            draft.seed = before.seed
+        }
+        beforeRegeneration = nil
+    }
+
+    // MARK: Sheets over the film
+
+    /// Starts changing the film's style or music; Cancel puts the choices back.
+    func beginChange(_ kind: PreviewSheet) {
+        guard kind == .style || kind == .music, path.last == .preview, sheet == nil else { return }
+        choicesBeforeChange = draft.styleAndMusic
+        sheet = kind
+    }
+
+    /// A change closed without making the film again: its choices are undone, so the draft
+    /// keeps matching the film that is shown.
+    func cancelChange() {
+        if let choices = choicesBeforeChange { draft.restore(choices) }
+        choicesBeforeChange = nil
+        if sheet == .style || sheet == .music { sheet = nil }
+    }
+
+    func openExport() {
+        guard path.last == .preview, sheet == nil, hasFilm else { return }
+        export = ExportJob(draft: draft)
+        sheet = .export
+    }
+
+    /// Closes the export; one still running is cancelled.
+    func closeExport() {
+        export?.cancel()
+        export = nil
+        if sheet == .export { sheet = nil }
+    }
+
+    func openTexts() {
+        guard path.last == .preview, sheet == nil, preview != nil else { return }
+        texts = TextsDraft(title: draft.title, endCredit: draft.endCredit)
+        sheet = .texts
+    }
+
+    func closeTexts(saving: Bool) {
+        let edited = texts
+        texts = nil
+        if sheet == .texts { sheet = nil }
+        if saving, let edited {
+            Task { await setTexts(title: edited.title, endCredit: edited.endCredit) }
+        }
+    }
+
+    /// Closes whatever sheet is open the way its Cancel or Close button would.
+    func dismissSheet() {
+        switch sheet {
+        case .style, .music: cancelChange()
+        case .export: closeExport()
+        case .texts: closeTexts(saving: false)
+        case nil: break
         }
     }
 
@@ -372,6 +548,10 @@ final class ProjectDraft {
     var edl: EditDecisionList?
     /// The media the saved thumbnail shows; nil until one is made in this session.
     var thumbnailMediaID: String?
+    /// A song of the user's own is being copied and its beat found.
+    private(set) var analysingSong = false
+    /// Why the last song of the user's own could not be used.
+    var songMessage: String?
 
     init(id: UUID = UUID()) {
         self.id = id
@@ -557,6 +737,35 @@ final class ProjectDraft {
 
     var mediaURLs: [String: URL] {
         Dictionary(uniqueKeysWithValues: media.map { ($0.item.id, $0.url) })
+    }
+
+    /// Copies a song of the user's own into the project and finds its beat.
+    func importSong(from url: URL) async {
+        guard !analysingSong else { return }
+        analysingSong = true
+        songMessage = nil
+        defer { analysingSong = false }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        let folder = storage.musicDirectory
+        let id = "custom-\(UUID().uuidString)"
+        let copy = folder.appending(path: "\(id).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: url, to: copy)
+            let info = try await AudioAnalyzer.trackInfo(id: id, url: copy)
+            customSong = SongChoice(
+                id: id, title: url.deletingPathExtension().lastPathComponent, url: copy, info: info, isCustom: true
+            )
+            select(songID: id)
+        } catch AudioAnalyzer.AnalysisError.noBeat {
+            // A song that cannot be used is not kept.
+            try? FileManager.default.removeItem(at: copy)
+            songMessage = String(localized: "No steady beat was found in that song. Try another one.")
+        } catch {
+            try? FileManager.default.removeItem(at: copy)
+            songMessage = String(localized: "That file could not be read. Songs bought in Apple Music are protected and cannot be used.")
+        }
     }
 }
 

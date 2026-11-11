@@ -38,33 +38,33 @@ extension StyleID {
 /// Step 3: choose a style and a song.
 struct StyleView: View {
     @Environment(AppModel.self) private var model
-    @State private var analysingSong = false
 
     var body: some View {
         List {
-            if model.directorAvailable {
-                DescriptionSection(draft: model.draft)
-            }
-            StylePickerSection(draft: model.draft)
-            MusicPickerSection(draft: model.draft, analysingSong: $analysingSong)
-            SoundSection(draft: model.draft)
+            StyleSections(draft: model.draft, describing: model.directorAvailable)
         }
         .navigationTitle("Style and music")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                model.path.append(.generate)
-            } label: {
-                Label("Create film", systemImage: "wand.and.stars")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(analysingSong)
-            .padding()
-            .background(.bar)
+        .flowActions([
+            FlowAction("Create film", systemImage: "wand.and.stars", kind: .primary, isDisabled: model.draft.analysingSong) {
+                model.createFilm()
+            },
+        ])
+    }
+}
+
+/// The description (with Apple Intelligence), style, music and sound sections of a list.
+struct StyleSections: View {
+    let draft: ProjectDraft
+    let describing: Bool
+
+    var body: some View {
+        if describing {
+            DescriptionSection(draft: draft)
         }
+        StylePickerSection(draft: draft)
+        MusicPickerSection(draft: draft)
+        SoundSection(draft: draft)
     }
 }
 
@@ -144,11 +144,9 @@ struct SoundSection: View {
 /// Built-in songs (those made for the style first), previews and the user's own file.
 struct MusicPickerSection: View {
     let draft: ProjectDraft
-    @Binding var analysingSong: Bool
     @State private var previewPlayer: AVAudioPlayer?
     @State private var playingSongID: String?
     @State private var importingSong = false
-    @State private var songMessage: String?
 
     var body: some View {
         Section {
@@ -165,7 +163,7 @@ struct MusicPickerSection: View {
             Button {
                 importingSong = true
             } label: {
-                if analysingSong {
+                if draft.analysingSong {
                     HStack(spacing: 10) {
                         ProgressView()
                         Text("Finding the beat…")
@@ -174,11 +172,11 @@ struct MusicPickerSection: View {
                     Label("Use your own audio file…", systemImage: "music.note.list")
                 }
             }
-            .disabled(analysingSong)
+            .disabled(draft.analysingSong)
         } header: {
             Text("Music")
         } footer: {
-            if let songMessage {
+            if let songMessage = draft.songMessage {
                 Text(songMessage)
             } else {
                 Text("All built-in music is made for Autoklipp and free to use in your films.")
@@ -186,7 +184,7 @@ struct MusicPickerSection: View {
         }
         .fileImporter(isPresented: $importingSong, allowedContentTypes: [.audio]) { result in
             if case let .success(url) = result {
-                Task { await importSong(from: url) }
+                Task { await draft.importSong(from: url) }
             }
         }
         .task(id: playingSongID) {
@@ -258,33 +256,5 @@ struct MusicPickerSection: View {
         previewPlayer?.stop()
         previewPlayer = nil
         playingSongID = nil
-    }
-
-    /// Copies the file into the project and finds its beat.
-    private func importSong(from url: URL) async {
-        analysingSong = true
-        songMessage = nil
-        defer { analysingSong = false }
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        let folder = draft.storage.musicDirectory
-        let id = "custom-\(UUID().uuidString)"
-        let copy = folder.appending(path: "\(id).\(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)")
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: url, to: copy)
-            let info = try await AudioAnalyzer.trackInfo(id: id, url: copy)
-            draft.customSong = SongChoice(
-                id: id, title: url.deletingPathExtension().lastPathComponent, url: copy, info: info, isCustom: true
-            )
-            draft.select(songID: id)
-        } catch AudioAnalyzer.AnalysisError.noBeat {
-            // A song that cannot be used is not kept.
-            try? FileManager.default.removeItem(at: copy)
-            songMessage = String(localized: "No steady beat was found in that song. Try another one.")
-        } catch {
-            try? FileManager.default.removeItem(at: copy)
-            songMessage = String(localized: "That file could not be read. Songs bought in Apple Music are protected and cannot be used.")
-        }
     }
 }

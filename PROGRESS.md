@@ -73,3 +73,18 @@ barn; appen fungerar fullt utan AI._
 - [x] Fritextfält bara när modellen finns; tyst reserv utan den
 - [x] Acceptanstest grönt i CI (`DirectorAppTests` – reservläge, att en beskrivning aldrig
       stoppar filmen och planföljning; den riktiga modellen provas på iPhone med Apple Intelligence)
+
+## iPhone Duo (iOS 27.1)
+
+Klart när: _två kolumner på innerskärmen, kontroller på sidan på ytterskärmen, allt tillstånd
+följer med vid ut- och ihopfällning, Split View faller tillbaka till en kolumn, och inget ändras på
+vanliga iPhones._
+
+- [x] Adaptiv layout från size class och bredd (`FlowLayout`), ingen enhetsdetektering
+- [x] Innerskärmen: film/bibliotek ~65 % till vänster, stegpanel ~35 % till höger, klippremsa under spelaren
+- [x] Ytterskärmen: stegens knappar i systemets sidofält (`toolbarVerticalEdge`, `Label`-objekt)
+- [x] Generering, export, import, ark och titeltext ägs av modellen; uppspelningen fortsätter
+- [x] Kolumnerna möts vid vecket när telefonen är delvis vikt (`ReservedRegion`)
+- [x] CI med Xcode 27.1 på iPhone Duo och iPhone 17 (iOS 27.1), kvar med Xcode 26.6 på iOS 26.5
+- [x] `FlowTests` och `FoldTransitionTests`
+

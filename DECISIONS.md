@@ -328,6 +328,109 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Fel visas som begripliga, översatta meddelanden** i stället för tekniska felkoder. (2026-10-21, granskning)
 - **Notisen om oläsbara objekt har orange ikon men text i vanlig textfärg:** orange text på vitt når bara cirka 2,2:1 (kravet är 4,5:1). (2026-10-21, granskning)
 
+## 8b. iPhone Duo (iOS 27.1)
+
+Mål: tvåkolumnslayout på den uppfällda innerskärmen (7,6"), sidoplacerade kontroller på
+ytterskärmen (5,4"), och att allt tillstånd följer med när telefonen fälls ut eller ihop. Källor:
+Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9 sep 2026).
+
+**Ändrade och nya vyer**
+
+| Fil | Ändring |
+| --- | --- |
+| `App/RootView.swift` | Väljer layout (`FlowLayout`) från size class och bredd; `FlowStack` (en kolumn, som förut) eller `WorkspaceStack` (två kolumner). Pausar filmen bara när den lämnar skärmen. |
+| `App/Flow.swift` (ny) | Flödets steg (`FlowStep`), arken (`PreviewSheet`), layoutvalet, kolumndelningen (`ColumnSplit`) och hur sidopanelens steg motsvarar navigeringen. |
+| `App/FlowJobs.swift` (ny) | Generering, export och mediaimport som jobb i modellen i stället för i vyernas `@State`/`.task`. |
+| `App/AppModel.swift` | Äger ark, jobb, titeltext och "val före ändring"; `createFilm`, `cancelGeneration`, `beginChange`, `openExport` m.fl. Låtimporten flyttad till `ProjectDraft`. |
+| `App/AutoklippApp.swift` | `AppDelegate` som tillåter liggande läge bara när fönstret är stort i båda riktningarna. |
+| `Features/WorkspaceView.swift` (ny) | Innerskärmen: film/bibliotek till vänster (~65 %), stegpanel till höger (~35 %). |
+| `Features/MediaSelectionView.swift` | Importen i modellen; Nästa/Börja om via `flowActions`. |
+| `Features/LengthView.swift` | Valen utbrutna till `LengthOptions` (används även i panelen). |
+| `Features/StyleView.swift` | Sektionerna utbrutna till `StyleSections`; låtanalysens status i utkastet. |
+| `Features/GenerateView.swift` | Visar modellens jobb; stegvisningen utbruten till `GenerationProgressView`. |
+| `Features/PreviewView.swift` | Spelare + klippremsa utbrutna till `FilmPlayerSection`; arken styrs av modellen. |
+| `Features/ExportView.swift` | Visar modellens `ExportJob`; formulärdelen utbruten till `ExportSections`. |
+| `Support/SideBars.swift` (ny) | `flowActions`: knappar under innehållet, eller i systemets sidofält när det ligger på sidan. Vecket via `ReservedRegion`. |
+
+**Beslut**
+
+- **Layouten väljs av size class och bredd, aldrig av enhetsmodell.** Två kolumner när bredden är
+  regular och fönstret minst 640 pt brett; annars en kolumn. Det täcker ytterskärmen (compact),
+  vanliga iPhones, och Split View på innerskärmen när appen blir för smal. Bredden mäts med en
+  `GeometryReader` runt allt, så layouten byts i samma uppdatering som fönstret ändrar storlek. (2026-11-11)
+- **Kolumnerna:** stegpanelen får 35 % av bredden, minst 280 och högst 440 pt; filmen resten.
+  Är telefonen delvis vikt som en bok (aktiv `ReservedRegion` av typen `.division` som går uppifrån
+  och ned) möts kolumnerna vid vecket i stället, så att inget ligger över det. Ett veck tvärs över
+  (innerskärmen upprätt) följs inte; där anpassar sig systemets egna komponenter. (2026-11-11)
+- **Egen tvåkolumnslayout i stället för `ArrangementView` eller `NavigationSplitView`.**
+  `ArrangementView` (iOS 27.1) delar på höjden när ytan är högre än bred, vilket ger film ovanför
+  panelen på den upprätta innerskärmen, och kräver iOS 27.1 medan appen stöder iOS 26.
+  `NavigationSplitView` lägger sidofältet till vänster och styr navigeringen själv; här ska panelen
+  ligga till höger och följa samma navigeringstillstånd som telefonlayouten. (2026-11-11)
+- **Sidopanelens steg:** Media, Längd, Stil och musik, Generera, Exportera. Aktivt steg är öppet,
+  övriga visas som rubriker med vad som valts. Stegen motsvarar navigeringen så här: Media/Längd/Stil
+  = de skärmarna; Generera = genereringen eller förhandsvisningen; Exportera = exportarket; Stil och
+  musik medan en film finns = arken "Byt stil"/"Byt musik" (Avbryt återställer valen). Att byta steg
+  stänger exporten och ångrar en obekräftad stiländring, precis som Stäng och Avbryt. Medan en film
+  görs eller exporteras går det inte att byta steg. (2026-11-11)
+- **Vänsterkolumnen:** i mediasteget Bilder-biblioteket inbäddat (`PhotosPicker` med
+  `.photosPickerStyle(.inline)` och löpande, ordnat urval) som ett stort rutnät; panelen visar valda
+  klipp, deras längd och hur lång film de räcker till. Annars filmen med klippremsan under, som får
+  plats med fler miniatyrer i den bredare kolumnen; innan det finns en film ett rutnät av de valda
+  bilderna. Rutnät har jämnt antal kolumner (6 och 4), enligt HIG, så att ett veck faller mellan två. (2026-11-11)
+- **Allt tillstånd ligger i modellen**, inte i vyerna, eftersom ut- och ihopfällning byter ut alla
+  vyer: valt media och pågående import (`MediaImportSession`), inställningar (`ProjectDraft`),
+  pågående generering (`GenerationJob`), export med format och förlopp (`ExportJob`), öppna ark,
+  text som skrivs i titelarket, och om en låt analyseras. Förut avbröts genereringen när dess vy
+  försvann (`.task`) och importen vid `onDisappear`. (2026-11-11)
+- **Uppspelningen fortsätter vid byte av layout:** spelaren (`AVPlayer`) ligger i modellen och
+  vyerna pausar den inte längre när de försvinner. Filmen pausas bara när den lämnar skärmen
+  (`isFilmOnScreen`: annat steg, ett ark över filmen eller mediasteget i två kolumner) och startas
+  bara när en ny film blir klar eller ett öppnat projekt är byggt – aldrig av att en vy visas, så en
+  pausad film förblir pausad efter vikningen. (2026-11-11)
+- **Ark stängs bara av modellen.** När layouten byts försvinner arket med den gamla vyn; modellen
+  ignorerar den stängningen och den nya layouten visar samma tillstånd (export som ark ↔ som steg).
+  Därför går arken inte att svepa bort; de har Avbryt/Stäng/Klar. (2026-11-11)
+- **Ytterskärmen och sidofälten:** med iOS 27.1 SDK placerar systemet navigeringsfält och
+  verktygsfält på sidan. Stegens huvudknappar (Nästa, Skapa film, Exportera, Avbryt, byt
+  musik/stil, en annan version) visas då som verktygsfältsobjekt med både titel och symbol
+  (`Label`): Avbryt/Tillbaka överst (`.cancellationAction`), huvudåtgärden därefter
+  (`.topBarPinnedTrailing`, hög `visibilityPriority`), övriga i `.bottomBar`, och Börja om sist
+  med låg prioritet så att den går först till överflödesmenyn. Var fälten ligger läses från
+  `toolbarVerticalEdge`; ligger de längs över- och underkant visas knapparna som förut under
+  innehållet, så vanliga iPhones ser ut som tidigare. Arkens knappar har också symboler. (2026-11-11)
+- **Stående läge som förut på telefonstora skärmar, alla lägen utom upp-och-ned på stora.** Appen
+  var låst i stående. Innerskärmen är bredare än hög när telefonen fälls upp som en bok, så där
+  måste appen kunna ligga. `AppDelegate` tillåter liggande bara när både bredd och höjd är
+  regular (innerskärmen); en stor iPhone på sidan är compact på höjden och stannar i stående. (2026-11-11)
+- **iOS 27.1-API:er bakom `#if compiler(>=6.4)` och `#available(iOS 27.1, *)`**
+  (`toolbarVerticalEdge`, `.topBarPinnedTrailing`, `visibilityPriority`, `reservedRegions`), samlade
+  i `Support/SideBars.swift`. Lägsta version är fortfarande iOS 26, och appen byggs i CI med både
+  Xcode 26.6 (iOS 26.5, iPhone 17) och Xcode 27.1 (iOS 27.1, iPhone Duo och iPhone 17). TestFlight
+  byggs med Xcode 27.1, eftersom en app byggd med äldre SDK inte når ut under statusfältet och
+  kameran på iPhone Duo och inte får sidofälten. (2026-11-11)
+- **Tester:** `FlowTests` (layoutval, kolumndelning, stegens koppling till navigeringen, när filmen
+  räknas som synlig, orienteringar) och `FoldTransitionTests`, som visar appens rotvy i ett fönster
+  och ändrar dess storlek och size class mellan ytter- och innerskärm, som ut- och ihopfällning gör:
+  filmen spelar vidare, exporten och titeltexten följer med, en pågående generering fortsätter, och
+  för smal Split View ger en kolumn. Skärmbilder av båda skärmarna loggas i CI. (2026-11-11)
+
+**Antaganden**
+
+- Skärmstorlekarna i testerna (ytter 476 × 673 pt, inner 948 × 670 pt liggande, 670 × 948 pt
+  upprätt) är uppskattade från 5,4" och 7,6" med samma bildformat (√2) och iPhones punkttäthet;
+  Duo-simulatorns verkliga mått skrivs ut i CI-loggen. Layouten beror inte på dem: den följer
+  fönstrets storlek.
+- Ytterskärmen är compact i bredd och innerskärmen regular i båda riktningarna, enligt Apple.
+- Simulatorn kan inte fälla telefonen från kommandoraden (`simctl` saknar gångjärnskommandon), så
+  själva gångjärnet provas inte i CI; testerna gör samma storleksändring som systemet gör. Device
+  Hub i Xcode kan användas för att prova lägena för hand.
+- Det modala Bilder-väljaren på ytterskärmen lämnar sitt urval först när man trycker Lägg till; fälls
+  telefonen ut medan den är öppen stängs den och urvalet som inte lagts till försvinner (redan
+  importerat media följer med). Den inbäddade väljaren på innerskärmen sparar varje tryck direkt.
+  Systemfönster som filväljaren för egen låt och delningsmenyn stängs också vid vikning.
+- Förlyssning av låtar i musikvalet stannar vid vikning; den är en kort provlyssning, inte filmen.
+
 ## 9. Öppna frågor (från SPEC.md)
 
 | Fråga                                   | Status                                                                 |
@@ -335,5 +438,5 @@ Format: **Beslut** – motivering – (datum, fas).
 | Appens namn och ikon                    | Arbetsnamn Autoklipp + platshållarikon                                 |
 | Privat app eller App Store              | Obesvarad; påverkar integritetsetikett och TestFlight-flödet           |
 | Var hämtas royaltyfri musik             | Löst för MVP med egengenererad CC0-musik                              |
-| iOS 26 eller iOS 27 som lägsta version  | iOS 26 (spec-standard); iOS 27-funktioner bakom `#available`           |
+| iOS 26 eller iOS 27 som lägsta version  | iOS 26 (spec-standard); iOS 27/27.1-funktioner bakom `#available`      |
 | Vattenstämpel eller betalvägg           | Obesvarad; appen är gratis och utan vattenstämpel tills vidare         |

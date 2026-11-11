@@ -4,66 +4,63 @@ import SwiftUI
 /// Step 2: choose how long the film should be.
 struct LengthView: View {
     @Environment(AppModel.self) private var model
-    @State private var customSeconds: Double = 90
-
-    private var draft: ProjectDraft { model.draft }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("How long should the film be?")
-                    .font(.title2.bold())
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
-                    choiceButton(.auto, title: Text("Auto"), detail: Text(Formatting.duration(AutoLength.suggest(for: draft.mediaItems))))
-                    ForEach(ProjectDraft.presetLengths, id: \.self) { seconds in
-                        choiceButton(.preset(seconds), title: Text(Formatting.duration(seconds)), detail: nil)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Custom length: \(Formatting.duration(customSeconds))")
-                        .font(.headline)
-                    Slider(value: $customSeconds, in: AutoLength.range, step: 5) {
-                        Text("Custom length")
-                    } minimumValueLabel: {
-                        Text(Formatting.duration(AutoLength.range.lowerBound))
-                    } maximumValueLabel: {
-                        Text(Formatting.duration(AutoLength.range.upperBound))
-                    }
-                    .accessibilityValue(Text(Formatting.duration(customSeconds)))
-                    .onChange(of: customSeconds) { _, seconds in
-                        draft.lengthChoice = .custom(seconds)
-                    }
-                }
-
-                // Stills are shown for whole beats of the song, so the song decides how long they can be.
-                let maximum = Planner.maximumDuration(of: draft.mediaItems, beatPeriod: draft.song.map { 60 / max(1, $0.info.bpm) })
-                if draft.targetDuration > maximum + Timing.lengthTolerance {
-                    Label(
-                        "Your photos and videos are enough for about \(Formatting.duration(maximum)). The film will be shorter unless you add more.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .padding()
+            LengthOptions(draft: model.draft)
+                .padding()
         }
         .navigationTitle("Length")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                model.path.append(.style)
-            } label: {
-                Text("Next")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+        .flowActions([
+            FlowAction("Next", systemImage: "arrow.right", kind: .primary) { model.path.append(.style) },
+        ])
+    }
+}
+
+/// The length choices, on their own screen or in the side panel.
+struct LengthOptions: View {
+    let draft: ProjectDraft
+    @State private var customSeconds: Double = 90
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("How long should the film be?")
+                .font(.title2.bold())
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
+                choiceButton(.auto, title: Text("Auto"), detail: Text(Formatting.duration(AutoLength.suggest(for: draft.mediaItems))))
+                ForEach(ProjectDraft.presetLengths, id: \.self) { seconds in
+                    choiceButton(.preset(seconds), title: Text(Formatting.duration(seconds)), detail: nil)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .padding()
-            .background(.bar)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Custom length: \(Formatting.duration(customSeconds))")
+                    .font(.headline)
+                Slider(value: $customSeconds, in: AutoLength.range, step: 5) {
+                    Text("Custom length")
+                } minimumValueLabel: {
+                    Text(Formatting.duration(AutoLength.range.lowerBound))
+                } maximumValueLabel: {
+                    Text(Formatting.duration(AutoLength.range.upperBound))
+                }
+                .accessibilityValue(Text(Formatting.duration(customSeconds)))
+                .onChange(of: customSeconds) { _, seconds in
+                    draft.lengthChoice = .custom(seconds)
+                }
+            }
+
+            // Stills are shown for whole beats of the song, so the song decides how long they can be.
+            let maximum = Planner.maximumDuration(of: draft.mediaItems, beatPeriod: draft.song.map { 60 / max(1, $0.info.bpm) })
+            if draft.targetDuration > maximum + Timing.lengthTolerance {
+                Label(
+                    "Your photos and videos are enough for about \(Formatting.duration(maximum)). The film will be shorter unless you add more.",
+                    systemImage: "info.circle"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
         }
         .onAppear {
             if case let .custom(seconds) = draft.lengthChoice { customSeconds = seconds }

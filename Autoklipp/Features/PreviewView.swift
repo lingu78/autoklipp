@@ -5,74 +5,11 @@ import SwiftUI
 /// Step 5: watch the film and adjust it.
 struct PreviewView: View {
     @Environment(AppModel.self) private var model
-    @State private var sheet: Sheet?
-    @State private var currentTime = 0.0
-    @State private var analysingSong = false
-    /// The style and music before a Change sheet opened; put back unless the film is made again.
-    @State private var choicesBeforeSheet: StyleAndMusic?
-    /// What to put back if a new version is cancelled or fails.
-    @State private var beforeRegeneration: Regeneration?
-
-    enum Sheet: String, Identifiable {
-        case export
-        case style
-        case music
-        case texts
-
-        var id: String { rawValue }
-    }
-
-    struct Regeneration {
-        let session: ObjectIdentifier
-        let choices: StyleAndMusic
-        let seed: UInt64
-    }
 
     var body: some View {
         VStack(spacing: 12) {
             if let session = model.preview {
-                VideoPlayer(player: session.player)
-                    .aspectRatio(aspectRatio, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .background(.black)
-                    .clipShape(.rect(cornerRadius: 12))
-                    .accessibilityLabel(Text("Film preview"))
-                    .onAppear { session.player.play() }
-                    .onDisappear { session.player.pause() }
-                    .task(id: ObjectIdentifier(session)) { await followPlayback(session.player) }
-                    .padding(.horizontal)
-
-                ForEach(Array(session.edl.notices.enumerated()), id: \.offset) { entry in
-                    noticeView(entry.element)
-                        .padding(.horizontal)
-                }
-                if model.draft.directorFailed {
-                    Label("Apple Intelligence could not follow your description, so the film was made without it.", systemImage: "info.circle")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                }
-
-                ClipStripView(
-                    clips: session.edl.clips,
-                    media: Dictionary(uniqueKeysWithValues: model.draft.media.map { ($0.id, $0) }),
-                    currentTime: currentTime,
-                    isBusy: model.isEditing,
-                    onSelect: { clip in
-                        let time = CMTime(seconds: clip.timelineStart + 0.01, preferredTimescale: 600)
-                        session.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-                    },
-                    onEdit: { edit in
-                        Task { await model.apply(edit) }
-                    }
-                )
-
-                Text("Drag to reorder · swipe up to remove · touch and hold to lock")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                FilmPlayerSection(session: session)
             } else {
                 Spacer()
                 ProgressView()
@@ -80,48 +17,21 @@ struct PreviewView: View {
                 Spacer()
             }
             Spacer(minLength: 0)
-            actions
-                .padding(.horizontal)
         }
-        .padding(.vertical)
+        .padding(.top)
         .navigationTitle(model.draft.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    open(.texts)
-                } label: {
-                    Label("Title and credits", systemImage: "textformat")
-                }
-                .disabled(model.preview == nil || model.isEditing)
+                TitleAndCreditsButton()
             }
         }
+        .flowActions(actions)
         .task { await model.preparePreview() }
-        .onAppear(perform: restoreAfterCancelledRegeneration)
-        .sheet(item: $sheet, onDismiss: restoreCancelledChange) { sheet in
-            switch sheet {
-            case .export:
-                if let session = model.preview {
-                    ExportView(edl: session.edl, draft: model.draft)
-                }
-            case .style:
-                ChangeSheet(title: Text("Change style")) {
-                    StylePickerSection(draft: model.draft)
-                } onDone: {
-                    regenerate(newSeed: false)
-                }
-            case .music:
-                ChangeSheet(title: Text("Change music"), isBusy: analysingSong) {
-                    MusicPickerSection(draft: model.draft, analysingSong: $analysingSong)
-                    SoundSection(draft: model.draft)
-                } onDone: {
-                    regenerate(newSeed: false)
-                }
-            case .texts:
-                TextsSheet(title: model.draft.title, endCredit: model.draft.endCredit) { title, credit in
-                    Task { await model.setTexts(title: title, endCredit: credit) }
-                }
-            }
+        // Only the model closes a sheet (its buttons, or a step chosen on a large display). The
+        // sheet also goes away when the layout changes, and must stay open in the model then.
+        .sheet(item: Binding(get: { model.sheet }, set: { _ in })) { sheet in
+            PreviewSheetContent(sheet: sheet)
         }
         .alert(
             Text("Something went wrong"),
@@ -133,46 +43,87 @@ struct PreviewView: View {
         }
     }
 
+    private var actions: [FlowAction] {
+        let disabled = model.preview == nil || model.isEditing
+        return [
+            FlowAction("Change music", systemImage: "music.note", isDisabled: disabled) { model.beginChange(.music) },
+            FlowAction("Change style", systemImage: "paintpalette", isDisabled: disabled) { model.beginChange(.style) },
+            FlowAction("Another version", systemImage: "shuffle", isDisabled: disabled) { model.createFilm(newVersion: true) },
+            FlowAction("Export", systemImage: "square.and.arrow.up", kind: .primary, isDisabled: disabled) { model.openExport() },
+        ]
+    }
+}
+
+/// Opens the title and end credit (F14).
+struct TitleAndCreditsButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button {
+            model.openTexts()
+        } label: {
+            Label("Title and credits", systemImage: "textformat")
+        }
+        .disabled(model.preview == nil || model.isEditing || model.sheet != nil)
+    }
+}
+
+/// The film with its notices and the clip strip; the same in both layouts, so that the player
+/// carries on when one replaces the other.
+struct FilmPlayerSection: View {
+    @Environment(AppModel.self) private var model
+    let session: PreviewSession
+    var isBusy = false
+    @State private var currentTime = 0.0
+
+    var body: some View {
+        VStack(spacing: 12) {
+            VideoPlayer(player: session.player)
+                .aspectRatio(aspectRatio, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .background(.black)
+                .clipShape(.rect(cornerRadius: 12))
+                .accessibilityLabel(Text("Film preview"))
+                .task(id: ObjectIdentifier(session)) { await followPlayback(session.player) }
+                .padding(.horizontal)
+
+            ForEach(Array(session.edl.notices.enumerated()), id: \.offset) { entry in
+                noticeView(entry.element)
+                    .padding(.horizontal)
+            }
+            if model.draft.directorFailed {
+                Label("Apple Intelligence could not follow your description, so the film was made without it.", systemImage: "info.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+            }
+
+            ClipStripView(
+                clips: session.edl.clips,
+                media: Dictionary(uniqueKeysWithValues: model.draft.media.map { ($0.id, $0) }),
+                currentTime: currentTime,
+                isBusy: model.isEditing || isBusy,
+                onSelect: { clip in
+                    let time = CMTime(seconds: clip.timelineStart + 0.01, preferredTimescale: 600)
+                    session.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+                },
+                onEdit: { edit in
+                    Task { await model.apply(edit) }
+                }
+            )
+
+            Text("Drag to reorder · swipe up to remove · touch and hold to lock")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+    }
+
     private var aspectRatio: CGFloat {
         let size = RenderSettings.preview(model.draft.format).renderSize
         return size.width / size.height
-    }
-
-    private var actions: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Button {
-                    open(.music)
-                } label: {
-                    Label("Change music", systemImage: "music.note")
-                        .frame(maxWidth: .infinity)
-                }
-                Button {
-                    open(.style)
-                } label: {
-                    Label("Change style", systemImage: "paintpalette")
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            HStack(spacing: 10) {
-                Button {
-                    regenerate(newSeed: true)
-                } label: {
-                    Label("Another version", systemImage: "shuffle")
-                        .frame(maxWidth: .infinity)
-                }
-                Button {
-                    open(.export)
-                } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .buttonStyle(.bordered)
-        .disabled(model.preview == nil || model.isEditing)
     }
 
     @ViewBuilder
@@ -189,42 +140,6 @@ struct PreviewView: View {
         }
     }
 
-    private func open(_ sheet: Sheet) {
-        model.preview?.player.pause()
-        if sheet == .style || sheet == .music { choicesBeforeSheet = model.draft.styleAndMusic }
-        self.sheet = sheet
-    }
-
-    /// A Change sheet closed without making the film again: its choices are undone, so the
-    /// draft keeps matching the film that is shown.
-    private func restoreCancelledChange() {
-        guard let choices = choicesBeforeSheet else { return }
-        model.draft.restore(choices)
-        choicesBeforeSheet = nil
-    }
-
-    /// Makes the film again; locked clips and removed footage are respected (F12). The new
-    /// version opens over this one, so cancelling it comes back here.
-    private func regenerate(newSeed: Bool) {
-        guard let session = model.preview else { return }
-        session.player.pause()
-        beforeRegeneration = Regeneration(
-            session: ObjectIdentifier(session), choices: choicesBeforeSheet ?? model.draft.styleAndMusic, seed: model.draft.seed
-        )
-        choicesBeforeSheet = nil
-        if newSeed { model.draft.seed = UInt64.random(in: 1...UInt64.max) }
-        model.path.append(.generate)
-    }
-
-    /// Back from a new version that was cancelled or failed: the shown film's choices return.
-    private func restoreAfterCancelledRegeneration() {
-        guard let before = beforeRegeneration else { return }
-        beforeRegeneration = nil
-        guard let session = model.preview, ObjectIdentifier(session) == before.session else { return }
-        model.draft.restore(before.choices)
-        model.draft.seed = before.seed
-    }
-
     private func followPlayback(_ player: AVPlayer) async {
         while !Task.isCancelled {
             let seconds = player.currentTime().seconds
@@ -234,14 +149,49 @@ struct PreviewView: View {
     }
 }
 
-/// A sheet with picker sections; confirming makes the film again.
+/// What a sheet over the film shows.
+struct PreviewSheetContent: View {
+    @Environment(AppModel.self) private var model
+    let sheet: PreviewSheet
+
+    var body: some View {
+        switch sheet {
+        case .export:
+            if let job = model.export {
+                ExportView(job: job)
+            }
+        case .style:
+            ChangeSheet(title: Text("Change style"), isBusy: model.draft.analysingSong) {
+                StylePickerSection(draft: model.draft)
+            } onCancel: {
+                model.cancelChange()
+            } onDone: {
+                model.createFilm()
+            }
+        case .music:
+            ChangeSheet(title: Text("Change music"), isBusy: model.draft.analysingSong) {
+                MusicPickerSection(draft: model.draft)
+                SoundSection(draft: model.draft)
+            } onCancel: {
+                model.cancelChange()
+            } onDone: {
+                model.createFilm()
+            }
+        case .texts:
+            TextsSheet()
+        }
+    }
+}
+
+/// A sheet with picker sections; confirming makes the film again. Closed only by its buttons,
+/// which tell the model.
 struct ChangeSheet<Content: View>: View {
     let title: Text
-    /// A song is being analysed; the sheet stays open until it is done.
+    /// A song is being analysed; the film cannot be made until it is done.
     var isBusy = false
     @ViewBuilder let content: () -> Content
+    let onCancel: () -> Void
     let onDone: () -> Void
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -250,40 +200,38 @@ struct ChangeSheet<Content: View>: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                            .disabled(isBusy)
+                        Button(role: .cancel, action: onCancel) {
+                            Label("Cancel", systemImage: "xmark")
+                        }
+                        .disabled(isBusy)
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Create film") {
-                            // First, so that closing the sheet does not undo the choices.
-                            onDone()
-                            dismiss()
+                        Button(action: onDone) {
+                            Label("Create film", systemImage: "checkmark")
                         }
                         .disabled(isBusy)
                     }
                 }
         }
-        .interactiveDismissDisabled(isBusy)
+        .interactiveDismissDisabled()
     }
 }
 
-/// Title at the start and a line at the end (F14).
+/// Title at the start and a line at the end (F14). The text being typed lives in the model,
+/// so it is still there when the sheet comes back in the other layout.
 struct TextsSheet: View {
-    @State var title: String
-    @State var endCredit: String
-    let onSave: (String, String) -> Void
-    @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Title", text: $title)
+                    TextField("Title", text: text(\.title))
                 } footer: {
                     Text("Shown over the first seconds of the film.")
                 }
                 Section {
-                    TextField("End credit", text: $endCredit)
+                    TextField("End credit", text: text(\.endCredit))
                 } footer: {
                     Text("Shown over the last seconds of the film.")
                 }
@@ -292,15 +240,25 @@ struct TextsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(role: .cancel) {
+                        model.closeTexts(saving: false)
+                    } label: {
+                        Label("Cancel", systemImage: "xmark")
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        onSave(title, endCredit)
-                        dismiss()
+                    Button {
+                        model.closeTexts(saving: true)
+                    } label: {
+                        Label("Done", systemImage: "checkmark")
                     }
                 }
             }
         }
+        .interactiveDismissDisabled()
+    }
+
+    private func text(_ field: WritableKeyPath<TextsDraft, String>) -> Binding<String> {
+        Binding(get: { model.texts?[keyPath: field] ?? "" }, set: { model.texts?[keyPath: field] = $0 })
     }
 }

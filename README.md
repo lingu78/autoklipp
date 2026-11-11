@@ -37,7 +37,9 @@ scripts/                  Strängkatalog (svenska) och kontroll av den
 
 ## Bygga och köra
 
-Kräver en Mac med **Xcode 26** eller senare.
+Kräver en Mac med **Xcode 26** eller senare. För iPhone Duo (två kolumner på innerskärmen,
+kontroller på sidan på ytterskärmen) krävs **Xcode 27.1**; simulatorn heter _iPhone Duo_, och
+lägena kan provas i Device Hub.
 
 ```bash
 open Autoklipp.xcodeproj    # välj schemat Autoklipp och en iPhone-simulator, ⌘R
@@ -59,6 +61,8 @@ python3 scripts/check_strings.py                     # strängkatalogen
 
 CI (`.github/workflows/ci.yml`) kör allt detta vid varje push: ClipCore på Linux och macOS,
 appens tester i simulatorn (med tillåtelse att spara i Bilder) och ett osignerat bygge för enhet.
+Appens tester körs med Xcode 26.6 (iPhone 17, iOS 26.5) och Xcode 27.1 (iPhone Duo och iPhone 17,
+iOS 27.1).
 
 ## Generera resurser
 

@@ -8,10 +8,12 @@ on:
 jobs:
   upload:
     name: Archive and upload
-    runs-on: macos-26
+    # Xcode 27.1 and the iOS 27.1 SDK: on iPhone Duo the app then uses the whole display and the
+    # system puts its bars on the side. The app still runs on iOS 26.
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
-      XCODE: /Applications/Xcode_26.6.app
+      XCODE_VERSION: "27.1"
       BUNDLE_ID: ${{ vars.BUNDLE_ID || 'se.autoklipp.app' }}
       TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -31,7 +33,11 @@ jobs:
           exit $missing
       - uses: actions/checkout@v7
       - name: Select Xcode
-        run: sudo xcode-select -s "$XCODE"
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_${XCODE_VERSION}*.app 2>/dev/null | sort | head -n 1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcodebuild -version
+          xcodebuild -version | grep -q "^Xcode ${XCODE_VERSION}" || { echo "::error::Xcode $XCODE_VERSION not found"; exit 1; }
       - name: Write the App Store Connect key
         env:
           PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}

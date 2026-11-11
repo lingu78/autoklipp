@@ -130,3 +130,116 @@ jobs:
             xcodebuild.log
             build.log
           retention-days: 7
+
+  ios-27:
+    # iPhone Duo needs Xcode 27.1 and the iOS 27.1 SDK; iPhone 17 on the same SDK checks that
+    # ordinary iPhones are unchanged. The job above keeps covering iOS 26 and Xcode 26.
+    name: iOS 27.1 (${{ matrix.simulator }})
+    runs-on: xcode-27
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        simulator: [iPhone Duo, iPhone 17]
+    env:
+      XCODE_VERSION: "27.1"
+      SIMULATOR: ${{ matrix.simulator }}
+      RUNTIME: "27.1"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_${XCODE_VERSION}*.app 2>/dev/null | sort | head -n 1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -q "^Xcode ${XCODE_VERSION}" || { echo "::error::Xcode $XCODE_VERSION not found"; exit 1; }
+      - name: Start booting the simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, os, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime, devices in data.items():
+              if runtime.endswith("iOS-" + os.environ["RUNTIME"].replace(".", "-")):
+                  for device in devices:
+                      if device["name"] == os.environ["SIMULATOR"]:
+                          print(device["udid"]); sys.exit()
+          sys.exit("simulator not found")')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+      - name: The simulated device
+        # The screens the simulator has, for the sizes in DECISIONS.md and the fold tests.
+        run: |
+          profile=$(find "$(xcode-select -p)/Platforms/iPhoneOS.platform" /Library/Developer/CoreSimulator/Profiles \
+            -path "*${SIMULATOR}.simdevicetype/Contents/Resources/profile.plist" 2>/dev/null | head -n 1)
+          if [ -n "$profile" ]; then plutil -p "$profile" | grep -iE "screen|display|scale|width|height|size" | head -n 60; fi
+          xcrun simctl io "$UDID" enumerate || true
+      - name: Build for testing
+        run: |
+          set +e
+          xcodebuild build-for-testing \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination "id=$UDID" > build.log 2>&1
+          status=$?
+          grep -E '(error:|warning: .*(deprecated|unavailable)|BUILD (SUCCEEDED|FAILED)|TEST BUILD)' build.log | tail -n 100
+          if [ $status -ne 0 ]; then tail -n 80 build.log; fi
+          exit $status
+      - name: Wait for the simulator and grant Photos add access
+        run: |
+          xcrun simctl bootstatus "$UDID" -b > /dev/null
+          xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+      - name: Test
+        env:
+          TEST_RUNNER_AUTOKLIPP_CI: "1"
+          TEST_RUNNER_AUTOKLIPP_SCREENSHOTS: ${{ runner.temp }}/screenshots
+        run: |
+          set +e
+          xcodebuild test-without-building \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination "id=$UDID" \
+            -parallel-testing-enabled NO \
+            -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
+          status=$?
+          grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400
+          grep -E '^screen: ' xcodebuild.log | sort -u
+          if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
+          exit $status
+      - name: Screenshots
+        if: always()
+        run: |
+          ls -la "$RUNNER_TEMP/screenshots" 2>/dev/null || echo "no screenshots"
+          grep -o 'SCREENSHOT:[A-Za-z0-9:+/=_-]*' xcodebuild.log 2>/dev/null || true
+      - name: The app on each display
+        # The app launched on its own, captured on every display the simulator has.
+        if: always()
+        run: |
+          xcrun simctl launch "$UDID" se.autoklipp.app || exit 0
+          sleep 8
+          mkdir -p "$RUNNER_TEMP/screenshots"
+          for display in internal external inner outer; do
+            file="$RUNNER_TEMP/screenshots/simulator-$display.png"
+            if xcrun simctl io "$UDID" screenshot --display="$display" "$file" 2>/dev/null; then
+              sips -Z 700 -s format jpeg -s formatOptions 60 "$file" --out "$RUNNER_TEMP/small.jpg" > /dev/null
+              base64 -i "$RUNNER_TEMP/small.jpg" | tr -d '\n' | fold -w 3000 | awk -v name="simulator-$display" '{ print "SCREENSHOT:" name ":" NR-1 ":" $0 }'
+            fi
+          done
+      - name: Keep screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-ios27-${{ matrix.simulator == 'iPhone Duo' && 'duo' || 'iphone' }}
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Keep test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-ios27-${{ matrix.simulator == 'iPhone Duo' && 'duo' || 'iphone' }}
+          path: |
+            TestResults.xcresult
+            xcodebuild.log
+            build.log
+          retention-days: 7

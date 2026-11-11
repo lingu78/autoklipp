@@ -122,6 +122,16 @@ STRINGS = {
     "None of the chosen photos or videos could be used.": "Ingen av de valda bilderna eller filmerna gick att använda.",
     "Your film is ready": "Din film är klar",
     "Open Autoklipp to save or share it.": "Öppna Autoklipp för att spara eller dela den.",
+    # iPhone Duo: the steps in the side panel on the inner display.
+    "Media": "Media",
+    "Generate": "Generera",
+    "No photos or videos yet": "Inga bilder eller filmer än",
+    "Your film appears here once it is made.": "Din film visas här när den är gjord.",
+    "Pick photos and videos in the library, choose a length and get a finished film with music.":
+        "Välj bilder och filmer i biblioteket, välj en längd och få en färdig film med musik.",
+    "Enough for a film of up to %@": "Räcker till en film på upp till %@",
+    "Ready to save or share": "Klar att spara eller dela",
+    "Save to Photos or share": "Spara i Bilder eller dela",
     "%lld selected": {
         "en": {"one": "%lld selected", "other": "%lld selected"},
         "sv": {"one": "%lld vald", "other": "%lld valda"},

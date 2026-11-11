@@ -531,6 +531,16 @@
         }
       }
     },
+    "Enough for a film of up to %@": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Räcker till en film på upp till %@"
+          }
+        }
+      }
+    },
     "Everything is processed on your iPhone. Nothing is uploaded.": {
       "localizations": {
         "sv": {
@@ -651,6 +661,16 @@
         }
       }
     },
+    "Generate": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generera"
+          }
+        }
+      }
+    },
     "Get a finished film": {
       "localizations": {
         "sv": {
@@ -741,6 +761,16 @@
         }
       }
     },
+    "Media": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Media"
+          }
+        }
+      }
+    },
     "Move earlier": {
       "localizations": {
         "sv": {
@@ -797,6 +827,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ingen film än"
+          }
+        }
+      }
+    },
+    "No photos or videos yet": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inga bilder eller filmer än"
           }
         }
       }
@@ -881,6 +921,16 @@
         }
       }
     },
+    "Pick photos and videos in the library, choose a length and get a finished film with music.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Välj bilder och filmer i biblioteket, välj en längd och få en färdig film med musik."
+          }
+        }
+      }
+    },
     "Pick photos and videos, choose a length and get a finished film with music.": {
       "localizations": {
         "sv": {
@@ -897,6 +947,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Provlyssna"
+          }
+        }
+      }
+    },
+    "Ready to save or share": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klar att spara eller dela"
           }
         }
       }
@@ -947,6 +1007,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Spara i Bilder"
+          }
+        }
+      }
+    },
+    "Save to Photos or share": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spara i Bilder eller dela"
           }
         }
       }
@@ -1237,6 +1307,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Din film"
+          }
+        }
+      }
+    },
+    "Your film appears here once it is made.": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Din film visas här när den är gjord."
           }
         }
       }
