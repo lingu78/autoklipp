@@ -32,6 +32,12 @@ final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let colorSpace = CGColorSpace(name: CGColorSpace.itur_709) ?? CGColorSpaceCreateDeviceRGB()
     private let cancelLock = NSLock()
     private var cancelling = false
+    /// Set on the compositor's queue once the first frame is drawn.
+    private var drewFirstFrame = false
+
+    /// Receives a line for each new render context, the first frame and every failed request;
+    /// tests set it to find out why a player refuses a film. Nil, and silent, in the app.
+    nonisolated(unsafe) static var trace: ((String) -> Void)?
 
     /// Buffers shared with the GPU (IOSurface, Metal), so Core Image reads and writes them in
     /// place instead of copying every frame through the CPU.
@@ -47,7 +53,12 @@ final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         kCVPixelBufferMetalCompatibilityKey as String: true,
     ]
 
-    func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
+    func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
+        Self.trace?(
+            "render context \(newRenderContext.size), scale \(newRenderContext.renderScale), "
+                + "high quality \(newRenderContext.highQualityRendering)"
+        )
+    }
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
         queue.async { [self] in
@@ -68,10 +79,12 @@ final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
 
     private func render(_ request: AVAsynchronousVideoCompositionRequest) {
         guard let instruction = request.videoCompositionInstruction as? ClipInstruction else {
+            Self.trace?("request at \(request.compositionTime.seconds) s failed: no instruction")
             request.finish(with: CompositorError.missingInstruction)
             return
         }
         guard let output = request.renderContext.newPixelBuffer() else {
+            Self.trace?("request at \(request.compositionTime.seconds) s failed: no output buffer")
             request.finish(with: CompositorError.noOutputBuffer)
             return
         }
@@ -82,6 +95,10 @@ final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         let context = RenderEnvironment.isInBackground ? cpuContext : gpuContext
         let size = request.renderContext.size
         context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: colorSpace)
+        if !drewFirstFrame {
+            drewFirstFrame = true
+            Self.trace?("first frame at \(time) s, \(size)")
+        }
         request.finish(withComposedVideoFrame: output)
     }
 }

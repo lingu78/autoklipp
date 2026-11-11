@@ -50,6 +50,7 @@ struct FoldTransitionTests {
 
         // Unfold: two columns, the same step, and the film plays on.
         let beforeUnfolding = player.currentTime().seconds
+        print("playback at unfolding: \(beforeUnfolding) s")
         resize(window, to: Self.inner)
         try await settle()
         #expect(model.layout == .columns)

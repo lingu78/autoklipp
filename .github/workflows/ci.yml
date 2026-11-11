@@ -93,7 +93,7 @@ jobs:
             -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
           status=$?
           grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400
-          grep -E '^(.*\] )?[a-zA-Z ]+: .* (ms|s)$|BPM detected|took|after [0-9]|sharpness|shake|average clip|^playback|^generation still running' xcodebuild.log | grep -v '◇' | tail -n 60
+          grep -E '^(.*\] )?[a-zA-Z ]+: .* (ms|s)$|BPM detected|took|after [0-9]|sharpness|shake|average clip|^playback|^generation still running|^compositor' xcodebuild.log | grep -v '◇' | tail -n 60
           if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
           exit $status
       - name: Screenshots
@@ -236,7 +236,7 @@ jobs:
             -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
           status=$?
           grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400
-          grep -E '^(screen|playback|generation still running)' xcodebuild.log | sort -u
+          grep -E '^(screen|playback|generation still running|compositor)' xcodebuild.log | head -n 80
           if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
           exit $status
       - name: Screenshots

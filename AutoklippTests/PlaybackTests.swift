@@ -1,7 +1,10 @@
 import AVFoundation
+import AVKit
 import ClipCore
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Autoklipp
 
@@ -47,6 +50,64 @@ struct PlaybackTests {
         await attempt("the preview's item", built.makePlayerItem())
 
         #expect(report["the preview's item"] == true, "the preview plays: \(report)")
+    }
+
+    /// On screen the compositor draws for display, which a player without a view never asks
+    /// for: the preview in a plain player layer, in AVKit's player and in SwiftUI's VideoPlayer
+    /// (the app's own view).
+    @Test(.timeLimit(.minutes(10)))
+    func thePreviewPlaysOnScreen() async throws {
+        let model = AppModel(inMemory: true)
+        try model.draft.storage.prepare()
+        defer { model.draft.storage.removeAll() }
+        model.draft.media = try await TestMedia.mixedSet(count: 8, in: model.draft.storage.mediaDirectory)
+        model.draft.lengthChoice = .preset(15)
+        let output = try await FilmGenerator.generate(GenerationInput(draft: model.draft), settings: .preview(.portrait)) { _, _ in }
+        let built = output.built
+        ClipCompositor.trace = { print("compositor: \($0)") }
+        defer { ClipCompositor.trace = nil }
+
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        defer { window.isHidden = true }
+        var report: [String: Bool] = [:]
+
+        // A plain layer, no AVKit.
+        let layerPlayer = AVPlayer(playerItem: built.makePlayerItem())
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        let layer = AVPlayerLayer(player: layerPlayer)
+        layer.frame = host.view.bounds
+        host.view.layer.addSublayer(layer)
+        report["in a player layer"] = await Self.playsOnScreen(layerPlayer, "in a player layer")
+
+        // AVKit's player view.
+        let kitPlayer = AVPlayer(playerItem: built.makePlayerItem())
+        let controller = AVPlayerViewController()
+        controller.player = kitPlayer
+        window.rootViewController = controller
+        report["in AVPlayerViewController"] = await Self.playsOnScreen(kitPlayer, "in AVPlayerViewController")
+
+        // SwiftUI's VideoPlayer, as the preview shows the film.
+        let swiftUIPlayer = AVPlayer(playerItem: built.makePlayerItem())
+        window.rootViewController = UIHostingController(rootView: VideoPlayer(player: swiftUIPlayer))
+        report["in VideoPlayer"] = await Self.playsOnScreen(swiftUIPlayer, "in VideoPlayer")
+
+        #expect(report["in VideoPlayer"] == true, "the preview plays on screen: \(report)")
+    }
+
+    static func playsOnScreen(_ player: AVPlayer, _ name: String) async -> Bool {
+        try? await Task.sleep(for: .milliseconds(500))
+        if let item = player.currentItem { await PreviewSession.waitUntilReady(item) }
+        player.play()
+        try? await Task.sleep(for: .seconds(2))
+        let time = player.currentTime().seconds
+        let ok = player.currentItem?.status == .readyToPlay && time > 0.5
+        print("playback on screen \(name): \(ok ? "plays" : "fails") – \(FoldTransitionTests.describe(player))")
+        player.pause()
+        return ok
     }
 
     /// Plays an item for a moment and says whether its time moved.
