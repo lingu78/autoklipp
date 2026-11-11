@@ -36,8 +36,9 @@ jobs:
         run: |
           XCODE=$(ls -d /Applications/Xcode_${XCODE_VERSION}*.app 2>/dev/null | sort | head -n 1)
           if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
-          xcodebuild -version
-          xcodebuild -version | grep -q "^Xcode ${XCODE_VERSION}" || { echo "::error::Xcode $XCODE_VERSION not found"; exit 1; }
+          version=$(xcodebuild -version)
+          echo "$version"
+          [[ "$version" == "Xcode ${XCODE_VERSION}"* ]] || { echo "::error::Xcode $XCODE_VERSION not found"; exit 1; }
       - name: Write the App Store Connect key
         env:
           PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}

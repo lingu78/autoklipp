@@ -157,20 +157,29 @@ jobs:
         run: |
           XCODE=$(ls -d /Applications/Xcode_${XCODE_VERSION}*.app 2>/dev/null | sort | head -n 1)
           if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
-          xcodebuild -version
+          version=$(xcodebuild -version)
+          echo "$version"
           swift --version
-          xcodebuild -version | grep -q "^Xcode ${XCODE_VERSION}" || { echo "::error::Xcode $XCODE_VERSION not found"; exit 1; }
+          [[ "$version" == "Xcode ${XCODE_VERSION}"* ]] || { echo "::error::Xcode $XCODE_VERSION not found"; exit 1; }
       - name: Start booting the simulator
+        # The image does not have every device on every runtime; a missing one is created.
         run: |
+          RUNTIME_ID=$(xcrun simctl list runtimes available -j | python3 -c '
+          import json, os, sys
+          runtimes = json.load(sys.stdin)["runtimes"]
+          print(next(r["identifier"] for r in runtimes if r.get("platform", "iOS") == "iOS" and r["version"] == os.environ["RUNTIME"]))')
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, os, sys
-          data = json.load(sys.stdin)["devices"]
-          for runtime, devices in data.items():
-              if runtime.endswith("iOS-" + os.environ["RUNTIME"].replace(".", "-")):
-                  for device in devices:
-                      if device["name"] == os.environ["SIMULATOR"]:
-                          print(device["udid"]); sys.exit()
-          sys.exit("simulator not found")')
+          devices = json.load(sys.stdin)["devices"].get(sys.argv[1], [])
+          print(next((d["udid"] for d in devices if d["name"] == os.environ["SIMULATOR"]), ""))' "$RUNTIME_ID")
+          if [ -z "$UDID" ]; then
+            TYPE_ID=$(xcrun simctl list devicetypes -j | python3 -c '
+          import json, os, sys
+          types = json.load(sys.stdin)["devicetypes"]
+          print(next(t["identifier"] for t in types if t["name"] == os.environ["SIMULATOR"]))')
+            UDID=$(xcrun simctl create "$SIMULATOR" "$TYPE_ID" "$RUNTIME_ID")
+            echo "Created $SIMULATOR ($TYPE_ID) on $RUNTIME_ID"
+          fi
           echo "UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
       - name: The simulated device

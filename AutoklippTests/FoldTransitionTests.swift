@@ -104,14 +104,20 @@ struct FoldTransitionTests {
         defer { window.isHidden = true }
         try await settle()
 
+        // Without the analyses kept from the first film the run takes several seconds, so the
+        // layout changes while it is going.
+        model.draft.analyses = [:]
         model.createFilm(newVersion: true)
         let job = try #require(model.generation)
         try await Task.sleep(for: .milliseconds(300))
         resize(window, to: Self.inner)
         try await settle()
-        #expect(model.generation === job, "the change of layout does not cancel the run")
+        print("generation still running after unfolding: \(model.generation === job)")
+        #expect(job.task?.isCancelled == false, "the change of layout does not cancel the run")
         await snapshot(window, "duo-inner-generating")
         resize(window, to: Self.outer)
+        try await settle()
+        #expect(job.task?.isCancelled == false)
 
         var waited = 0
         while model.generation != nil, waited < 600 {
