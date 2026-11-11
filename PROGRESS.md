@@ -85,6 +85,6 @@ vanliga iPhones._
 - [x] Ytterskärmen: stegens knappar i systemets sidofält (`toolbarVerticalEdge`, `Label`-objekt)
 - [x] Generering, export, import, ark och titeltext ägs av modellen; uppspelningen fortsätter
 - [x] Kolumnerna möts vid vecket när telefonen är delvis vikt (`ReservedRegion`)
-- [x] CI med Xcode 27.1 på iPhone Duo och iPhone 17 (iOS 27.1), kvar med Xcode 26.6 på iOS 26.5
+- [x] CI med Xcode 27.1 på iPhone Duo (iOS 27.1) och iPhone 17 (iOS 27), kvar med Xcode 26.6 på iOS 26.5
 - [x] `FlowTests` och `FoldTransitionTests`
 

@@ -140,17 +140,23 @@ jobs:
   ios-27:
     # iPhone Duo needs Xcode 27.1 and the iOS 27.1 SDK; iPhone 17 on the same SDK checks that
     # ordinary iPhones are unchanged. The job above keeps covering iOS 26 and Xcode 26.
-    name: iOS 27.1 (${{ matrix.simulator }})
+    name: Xcode 27.1 (${{ matrix.simulator }})
     runs-on: xcode-27
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
-        simulator: [iPhone Duo, iPhone 17]
+        include:
+          - simulator: iPhone Duo
+            runtime: "27.1"
+          # The image's iOS 27.1 runtime runs only iPhone Duo; an ordinary iPhone gets the
+          # newest iOS 27 runtime that has it.
+          - simulator: iPhone 17
+            runtime: ""
     env:
       XCODE_VERSION: "27.1"
       SIMULATOR: ${{ matrix.simulator }}
-      RUNTIME: "27.1"
+      RUNTIME: ${{ matrix.runtime }}
     steps:
       - uses: actions/checkout@v7
       - name: Select Xcode
@@ -162,17 +168,29 @@ jobs:
           swift --version
           [[ "$version" == "Xcode ${XCODE_VERSION}"* ]] || { echo "::error::Xcode $XCODE_VERSION not found"; exit 1; }
       - name: Start booting the simulator
-        # The image does not have every device on every runtime; a missing one is created.
+        # A device missing on the wanted runtime is created; without a wanted runtime, the
+        # newest iOS 27 runtime with the device is used.
         run: |
-          RUNTIME_ID=$(xcrun simctl list runtimes available -j | python3 -c '
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, os, re, sys
+          wanted = os.environ.get("RUNTIME", "")
+          found = []
+          for runtime, devices in json.load(sys.stdin)["devices"].items():
+              match = re.search(r"SimRuntime\.iOS-(\d+)-(\d+)$", runtime)
+              if not match or (wanted and wanted != f"{match[1]}.{match[2]}") or int(match[1]) < 27:
+                  continue
+              for device in devices:
+                  if device["name"] == os.environ["SIMULATOR"]:
+                      found.append(((int(match[1]), int(match[2])), device["udid"], runtime))
+          if found:
+              version, udid, runtime = max(found)
+              print(udid)
+              print(runtime, file=sys.stderr)')
+          if [ -z "$UDID" ]; then
+            RUNTIME_ID=$(xcrun simctl list runtimes available -j | python3 -c '
           import json, os, sys
           runtimes = json.load(sys.stdin)["runtimes"]
           print(next(r["identifier"] for r in runtimes if r.get("platform", "iOS") == "iOS" and r["version"] == os.environ["RUNTIME"]))')
-          UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, os, sys
-          devices = json.load(sys.stdin)["devices"].get(sys.argv[1], [])
-          print(next((d["udid"] for d in devices if d["name"] == os.environ["SIMULATOR"]), ""))' "$RUNTIME_ID")
-          if [ -z "$UDID" ]; then
             TYPE_ID=$(xcrun simctl list devicetypes -j | python3 -c '
           import json, os, sys
           types = json.load(sys.stdin)["devicetypes"]

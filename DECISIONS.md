@@ -406,7 +406,8 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
 - **iOS 27.1-API:er bakom `#if compiler(>=6.4)` och `#available(iOS 27.1, *)`**
   (`toolbarVerticalEdge`, `.topBarPinnedTrailing`, `visibilityPriority`, `reservedRegions`), samlade
   i `Support/SideBars.swift`. Lägsta version är fortfarande iOS 26, och appen byggs i CI med både
-  Xcode 26.6 (iOS 26.5, iPhone 17) och Xcode 27.1 (iOS 27.1, iPhone Duo och iPhone 17). TestFlight
+  Xcode 26.6 (iOS 26.5, iPhone 17) och Xcode 27.1 (iPhone Duo på iOS 27.1, iPhone 17 på den nyaste
+  iOS 27-runtime som har den; runnerns iOS 27.1-runtime kör bara iPhone Duo). TestFlight
   byggs med Xcode 27.1, eftersom en app byggd med äldre SDK inte når ut under statusfältet och
   kameran på iPhone Duo och inte får sidofälten. (2026-11-11)
 - **Tester:** `FlowTests` (layoutval, kolumndelning, stegens koppling till navigeringen, när filmen
