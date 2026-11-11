@@ -32,6 +32,7 @@ struct FoldTransitionTests {
     @Test(.timeLimit(.minutes(10)))
     func unfoldingKeepsTheFilmPlayingAndTheExportOpen() async throws {
         logScreens()
+        let showsVideo = try await DisplayCheck.videoShowsOnScreen()
         let model = try await AdjustmentTests().preparedModel()
         let storage = model.draft.storage
         defer { storage.removeAll() }
@@ -39,7 +40,7 @@ struct FoldTransitionTests {
         model.path = [.media, .length, .style, .preview]
 
         let window = try host(model, on: Self.outer)
-        defer { window.isHidden = true }
+        defer { close(window, model) }
         try await settle()
         #expect(model.layout == .stack)
         player.play()
@@ -59,7 +60,13 @@ struct FoldTransitionTests {
         #expect(window.rootViewController?.presentedViewController == nil)
         print("playback after unfolding: \(Self.describe(player))")
         #expect(player.rate > 0, "playback carries on through the change of layout")
-        #expect(player.currentTime().seconds > beforeUnfolding)
+        if showsVideo {
+            #expect(player.currentTime().seconds > beforeUnfolding)
+        } else {
+            withKnownIssue("This simulator shows no video on screen, not even a plain file", isIntermittent: true) {
+                #expect(player.currentTime().seconds > beforeUnfolding)
+            }
+        }
         await snapshot(window, "duo-inner-preview")
 
         // The export opened on the inner display is still open, with its choices, once folded.
@@ -106,7 +113,7 @@ struct FoldTransitionTests {
         let shown = try #require(model.preview)
         model.path = [.media, .length, .style, .preview]
         let window = try host(model, on: Self.outer)
-        defer { window.isHidden = true }
+        defer { close(window, model) }
         try await settle()
 
         // Without the analyses kept from the first film the run takes several seconds, so the
@@ -143,7 +150,7 @@ struct FoldTransitionTests {
         defer { storage.removeAll() }
         model.path = [.media, .length]
         let window = try host(model, on: Self.innerUpright)
-        defer { window.isHidden = true }
+        defer { close(window, model) }
         try await settle()
         #expect(model.layout == .columns)
         await snapshot(window, "duo-inner-upright-length")
@@ -185,6 +192,14 @@ struct FoldTransitionTests {
         resize(window, to: display)
         window.makeKeyAndVisible()
         return window
+    }
+
+    /// Stops the film and lets the window go, so that nothing keeps playing into later tests.
+    private func close(_ window: UIWindow, _ model: AppModel) {
+        model.preview?.player.pause()
+        model.closePreview()
+        window.isHidden = true
+        window.rootViewController = nil
     }
 
     private func resize(_ window: UIWindow, to display: Display) {

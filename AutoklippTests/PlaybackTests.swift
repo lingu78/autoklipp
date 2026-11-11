@@ -67,10 +67,14 @@ struct PlaybackTests {
         ClipCompositor.trace = { print("compositor: \($0)") }
         defer { ClipCompositor.trace = nil }
 
+        let showsVideo = try await DisplayCheck.videoShowsOnScreen()
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        defer { window.isHidden = true }
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
         var report: [String: Bool] = [:]
 
         // A plain layer, no AVKit.
@@ -95,7 +99,13 @@ struct PlaybackTests {
         window.rootViewController = UIHostingController(rootView: VideoPlayer(player: swiftUIPlayer))
         report["in VideoPlayer"] = await Self.playsOnScreen(swiftUIPlayer, "in VideoPlayer")
 
-        #expect(report["in VideoPlayer"] == true, "the preview plays on screen: \(report)")
+        if showsVideo {
+            #expect(report["in VideoPlayer"] == true, "the preview plays on screen: \(report)")
+        } else {
+            withKnownIssue("This simulator shows no video on screen, not even a plain file", isIntermittent: true) {
+                #expect(report["in VideoPlayer"] == true, "the preview plays on screen: \(report)")
+            }
+        }
     }
 
     static func playsOnScreen(_ player: AVPlayer, _ name: String) async -> Bool {
@@ -122,3 +132,36 @@ struct PlaybackTests {
         return (ok, FoldTransitionTests.describe(player))
     }
 }
+
+/// Whether this simulator can show video on screen at all: a plain test video in a plain player
+/// layer. The iPhone Duo simulator on the Xcode 27.1 runner fails this (AVFoundation -12784)
+/// while it plays the same video without a view, so the preview's own on-screen checks there
+/// are known issues of the simulator, not of the app.
+@MainActor
+enum DisplayCheck {
+    private static var result: Bool?
+
+    static func videoShowsOnScreen() async throws -> Bool {
+        if let result { return result }
+        let folder = try TestMedia.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "plain.mov")
+        try await TestMedia.writeVideo(to: url, duration: 4, width: 640, height: 360, color: TestMedia.RGB.palette[0], date: nil)
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        let player = AVPlayer(url: url)
+        let layer = AVPlayerLayer(player: player)
+        layer.frame = host.view.bounds
+        host.view.layer.addSublayer(layer)
+        let shows = await PlaybackTests.playsOnScreen(player, "plain video")
+        window.isHidden = true
+        window.rootViewController = nil
+        result = shows
+        return shows
+    }
+}
+

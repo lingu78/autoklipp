@@ -30,6 +30,8 @@ struct ExportSpeedTests {
         let edl = FilmGenerator.plan(GenerationInput(media: media, targetDuration: 4, style: .travel, song: song, seed: 1, format: .portrait))
         let built = try await FilmGenerator.build(edl, media: media, song: song, settings: RenderSettings(format: .portrait, resolution: .hd1080))
 
+        // The CPU renderer, used while the app is not active, is many times slower.
+        print("compositor: app inactive or in background: \(RenderEnvironment.isInBackground)")
         let reader = try AVAssetReader(asset: built.composition)
         let output = AVAssetReaderVideoCompositionOutput(
             videoTracks: try await built.composition.loadTracks(withMediaType: .video),
