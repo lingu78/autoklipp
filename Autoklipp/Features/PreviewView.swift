@@ -80,9 +80,10 @@ struct FilmPlayerSection: View {
         VStack(spacing: 12) {
             VideoPlayer(player: session.player)
                 .aspectRatio(aspectRatio, contentMode: .fit)
-                .frame(maxWidth: .infinity)
                 .background(.black)
                 .clipShape(.rect(cornerRadius: 12))
+                // Centred; the black stays inside the film's own shape.
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel(Text("Film preview"))
                 .task(id: ObjectIdentifier(session)) { await followPlayback(session.player) }
                 .padding(.horizontal)

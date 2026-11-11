@@ -93,7 +93,7 @@ jobs:
             -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
           status=$?
           grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400
-          grep -E '^(.*\] )?[a-zA-Z ]+: .* (ms|s)$|BPM detected|took|after [0-9]|sharpness|shake|average clip' xcodebuild.log | grep -v '◇' | tail -n 60
+          grep -E '^(.*\] )?[a-zA-Z ]+: .* (ms|s)$|BPM detected|took|after [0-9]|sharpness|shake|average clip|^playback|^generation still running' xcodebuild.log | grep -v '◇' | tail -n 60
           if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
           exit $status
       - name: Screenshots
@@ -218,7 +218,7 @@ jobs:
             -resultBundlePath TestResults.xcresult > xcodebuild.log 2>&1
           status=$?
           grep -E '(error:|Test [Cc]ase .*(passed|failed)|Test run|Executed|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|EXECUTE)' xcodebuild.log | tail -n 400
-          grep -E '^screen: ' xcodebuild.log | sort -u
+          grep -E '^(screen|playback|generation still running)' xcodebuild.log | sort -u
           if [ $status -ne 0 ]; then tail -n 80 xcodebuild.log; fi
           exit $status
       - name: Screenshots
@@ -233,7 +233,8 @@ jobs:
           xcrun simctl launch "$UDID" se.autoklipp.app || exit 0
           sleep 8
           mkdir -p "$RUNNER_TEMP/screenshots"
-          for display in internal external inner outer; do
+          # iPhone Duo's outer and inner displays are "primary" and "primary-1".
+          for display in primary primary-1; do
             file="$RUNNER_TEMP/screenshots/simulator-$display.png"
             if xcrun simctl io "$UDID" screenshot --display="$display" "$file" 2>/dev/null; then
               sips -Z 700 -s format jpeg -s formatOptions 60 "$file" --out "$RUNNER_TEMP/small.jpg" > /dev/null

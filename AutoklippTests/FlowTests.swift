@@ -14,10 +14,10 @@ struct FlowTests {
     @Test func layoutFollowsSizeClassAndWidth() {
         // An iPhone, and iPhone Duo's outer display: compact width.
         #expect(FlowLayout.choose(horizontalSizeClass: .compact, width: 402) == .stack)
-        #expect(FlowLayout.choose(horizontalSizeClass: .compact, width: 476) == .stack)
-        // The inner display, opened like a book and turned upright.
-        #expect(FlowLayout.choose(horizontalSizeClass: .regular, width: 948) == .columns)
-        #expect(FlowLayout.choose(horizontalSizeClass: .regular, width: 670) == .columns)
+        #expect(FlowLayout.choose(horizontalSizeClass: .compact, width: 466) == .stack)
+        // The inner display, sideways and upright (the simulator's 951 × 669 pt).
+        #expect(FlowLayout.choose(horizontalSizeClass: .regular, width: 951) == .columns)
+        #expect(FlowLayout.choose(horizontalSizeClass: .regular, width: 669) == .columns)
         // Split View: too narrow for two columns, even where the width class is still regular.
         #expect(FlowLayout.choose(horizontalSizeClass: .regular, width: 500) == .stack)
         #expect(FlowLayout.choose(horizontalSizeClass: .compact, width: 948) == .stack)

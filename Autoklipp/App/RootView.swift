@@ -12,7 +12,9 @@ struct RootView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = FlowLayout.choose(horizontalSizeClass: horizontalSizeClass, width: proxy.size.width)
+            // The window's whole width: bars moving to the side must not change the layout.
+            let width = proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing
+            let layout = FlowLayout.choose(horizontalSizeClass: horizontalSizeClass, width: width)
             Group {
                 switch layout {
                 case .stack: FlowStack()

@@ -417,10 +417,13 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
 
 **Antaganden**
 
-- Skärmstorlekarna i testerna (ytter 476 × 673 pt, inner 948 × 670 pt liggande, 670 × 948 pt
-  upprätt) är uppskattade från 5,4" och 7,6" med samma bildformat (√2) och iPhones punkttäthet;
-  Duo-simulatorns verkliga mått skrivs ut i CI-loggen. Layouten beror inte på dem: den följer
-  fönstrets storlek.
+- Skärmstorlekarna i testerna är iPhone Duo-simulatorns: ytterskärmen 466 × 678 pt (1398 × 2034
+  px), innerskärmen 669 × 951 pt upprätt och 951 × 669 pt på sidan (2007 × 2853 px), båda 3x.
+  Layouten beror inte på dem: den följer fönstrets storlek. Bredden mäts över hela fönstret, även
+  under sidofälten, så att fält som flyttar till sidan inte byter layout.
+- Testfönstren visas på den skärm testerna körs på. På Duo-simulatorns ytterskärm hamnar systemets
+  sidofält vid den skärmens kant, alltså mitt i ett större testfönster; skärmbilderna från iOS
+  26-jobbet visar innerlayouten utan den effekten.
 - Ytterskärmen är compact i bredd och innerskärmen regular i båda riktningarna, enligt Apple.
 - Simulatorn kan inte fälla telefonen från kommandoraden (`simctl` saknar gångjärnskommandon), så
   själva gångjärnet provas inte i CI; testerna gör samma storleksändring som systemet gör. Device

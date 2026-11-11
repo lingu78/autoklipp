@@ -10,16 +10,18 @@ import UIKit
 /// display. These tests host the app's root view in a window, resize it the same way, and check
 /// that the layout changes while the film keeps playing and nothing open is lost.
 ///
-/// The sizes are estimates from Apple's figures (5.4" outer and 7.6" inner display with the
-/// same aspect ratio); on the iPhone Duo simulator the real screens are logged as well.
+/// The sizes are those of the iPhone Duo simulator's two screens. Windows are hosted on the
+/// screen the tests run on, so on iPhone Duo's outer display the system's side bar sits at that
+/// screen's edge, inside a larger window.
 @Suite("iPhone Duo – folding and unfolding", .serialized)
 @MainActor
 struct FoldTransitionTests {
-    static let outer = Display(name: "outer", size: CGSize(width: 476, height: 673), regular: false)
-    static let inner = Display(name: "inner", size: CGSize(width: 948, height: 670), regular: true)
-    static let innerUpright = Display(name: "inner-upright", size: CGSize(width: 670, height: 948), regular: true)
+    // The iPhone Duo simulator's screens: 1398 × 2034 and 2007 × 2853 pixels at 3x.
+    static let outer = Display(name: "outer", size: CGSize(width: 466, height: 678), regular: false)
+    static let inner = Display(name: "inner", size: CGSize(width: 951, height: 669), regular: true)
+    static let innerUpright = Display(name: "inner-upright", size: CGSize(width: 669, height: 951), regular: true)
     /// The inner display shared with another app in Split View.
-    static let splitView = Display(name: "split-view", size: CGSize(width: 470, height: 670), regular: true)
+    static let splitView = Display(name: "split-view", size: CGSize(width: 470, height: 669), regular: true)
 
     struct Display {
         let name: String
@@ -42,6 +44,7 @@ struct FoldTransitionTests {
         #expect(model.layout == .stack)
         player.play()
         try await Task.sleep(for: .seconds(1))
+        print("playback before unfolding: \(Self.describe(player))")
         #expect(player.rate > 0)
         await snapshot(window, "duo-outer-preview")
 
@@ -53,6 +56,7 @@ struct FoldTransitionTests {
         #expect(model.path == [.media, .length, .style, .preview])
         #expect(model.activeStep == .generate)
         #expect(window.rootViewController?.presentedViewController == nil)
+        print("playback after unfolding: \(Self.describe(player))")
         #expect(player.rate > 0, "playback carries on through the change of layout")
         #expect(player.currentTime().seconds > beforeUnfolding)
         await snapshot(window, "duo-inner-preview")
@@ -212,6 +216,16 @@ struct FoldTransitionTests {
         if let jpeg = small.jpegData(compressionQuality: 0.6) {
             ScreenshotTests.log(name: name, jpeg: jpeg)
         }
+    }
+
+    /// The player's state, for the log: why a film does not advance, if it does not.
+    static func describe(_ player: AVPlayer) -> String {
+        let item = player.currentItem
+        let waiting = player.reasonForWaitingToPlay?.rawValue ?? "-"
+        let event = item?.errorLog()?.events.last
+        return "rate \(player.rate), time \(player.currentTime().seconds), control \(player.timeControlStatus.rawValue), "
+            + "waiting \(waiting), item status \(item?.status.rawValue ?? -1), error \(String(describing: item?.error)), "
+            + "log \(event?.errorStatusCode ?? 0) \(event?.errorComment ?? "-")"
     }
 
     private func logScreens() {
