@@ -19,8 +19,9 @@ final class ClipInstruction: NSObject, AVVideoCompositionInstructionProtocol, @u
     }
 }
 
-/// Custom compositor: every output frame is drawn by `FrameRenderer` with Core Image.
-final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
+/// Custom compositor: every output frame is drawn by `FrameRenderer` with Core Image. Not final,
+/// so that tests can try variants of what it asks of AVFoundation.
+class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     enum CompositorError: Error {
         case missingInstruction
         case noOutputBuffer
@@ -41,17 +42,15 @@ final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
 
     /// Buffers shared with the GPU (IOSurface, Metal), so Core Image reads and writes them in
     /// place instead of copying every frame through the CPU.
-    let sourcePixelBufferAttributes: [String: any Sendable]? = [
+    static let sharedBufferAttributes: [String: any Sendable] = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
         kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
         kCVPixelBufferMetalCompatibilityKey as String: true,
     ]
 
-    let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-        kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
-        kCVPixelBufferMetalCompatibilityKey as String: true,
-    ]
+    var sourcePixelBufferAttributes: [String: any Sendable]? { Self.sharedBufferAttributes }
+
+    var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { Self.sharedBufferAttributes }
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
         Self.trace?(

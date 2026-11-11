@@ -108,6 +108,69 @@ struct PlaybackTests {
         }
     }
 
+    /// Which part of the film a player showing it on screen refuses: the tracks alone, the
+    /// video composition's colour properties, the compositor's buffers or colour handling, or the
+    /// black carrier track stretched under the film. Logs only; thePreviewPlaysOnScreen decides.
+    @Test(.timeLimit(.minutes(10)))
+    func variantsOfTheFilmOnScreen() async throws {
+        let model = AppModel(inMemory: true)
+        try model.draft.storage.prepare()
+        defer { model.draft.storage.removeAll() }
+        model.draft.media = try await TestMedia.mixedSet(count: 8, in: model.draft.storage.mediaDirectory)
+        model.draft.lengthChoice = .preset(15)
+        let output = try await FilmGenerator.generate(GenerationInput(draft: model.draft), settings: .preview(.portrait)) { _, _ in }
+        let built = output.built
+        ClipCompositor.trace = { print("compositor: \($0)") }
+        defer { ClipCompositor.trace = nil }
+
+        func composition(_ change: (AVMutableVideoComposition) -> Void) -> AVVideoComposition {
+            let copy = built.videoComposition.mutableCopy() as! AVMutableVideoComposition
+            change(copy)
+            return copy
+        }
+        let original = try #require(built.videoComposition.instructions.first as? ClipInstruction)
+        let trackIDs = (original.requiredSourceTrackIDs ?? []).compactMap { ($0 as? NSNumber)?.int32Value }
+        let withoutCarrier = try #require(built.composition.mutableCopy() as? AVMutableComposition)
+        if let carrierID = trackIDs.first, let carrier = withoutCarrier.track(withTrackID: carrierID) {
+            withoutCarrier.removeTrack(carrier)
+        }
+        let variants: [(String, AVAsset, AVVideoComposition?)] = [
+            ("tracks only", built.composition, nil),
+            ("as built", built.composition, built.videoComposition),
+            ("without colour properties", built.composition, composition {
+                $0.colorPrimaries = nil
+                $0.colorTransferFunction = nil
+                $0.colorYCbCrMatrix = nil
+            }),
+            ("wide-colour compositor", built.composition, composition { $0.customVideoCompositorClass = WideColourCompositor.self }),
+            ("plain-buffer compositor", built.composition, composition { $0.customVideoCompositorClass = PlainBufferCompositor.self }),
+            ("without the carrier track", withoutCarrier, composition {
+                $0.instructions = [ClipInstruction(timeRange: original.timeRange, trackIDs: Array(trackIDs.dropFirst()), renderer: original.renderer)]
+            }),
+        ]
+
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        for (name, asset, videoComposition) in variants {
+            let item = AVPlayerItem(asset: asset)
+            item.videoComposition = videoComposition
+            let player = AVPlayer(playerItem: item)
+            let layer = AVPlayerLayer(player: player)
+            layer.frame = host.view.bounds
+            host.view.layer.addSublayer(layer)
+            _ = await Self.playsOnScreen(player, "variant \(name)")
+            layer.removeFromSuperlayer()
+        }
+    }
+
     static func playsOnScreen(_ player: AVPlayer, _ name: String) async -> Bool {
         try? await Task.sleep(for: .milliseconds(500))
         if let item = player.currentItem { await PreviewSession.waitUntilReady(item) }
@@ -165,3 +228,18 @@ enum DisplayCheck {
     }
 }
 
+/// Compositor variants for variantsOfTheFilmOnScreen.
+final class WideColourCompositor: ClipCompositor {
+    @objc var supportsWideColorSourceFrames: Bool { true }
+    @objc var canConformColorOfSourceFrames: Bool { true }
+}
+
+final class PlainBufferCompositor: ClipCompositor {
+    override var sourcePixelBufferAttributes: [String: any Sendable]? {
+        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+    }
+
+    override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
+        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+    }
+}
