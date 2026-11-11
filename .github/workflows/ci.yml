@@ -104,6 +104,9 @@ jobs:
           grep -o 'SCREENSHOT:[A-Za-z0-9:+/=_-]*' xcodebuild.log 2>/dev/null || true
       - name: Keep screenshots
         if: always()
+        # Artifacts are a convenience (the log has small copies); slow storage must not fail CI.
+        continue-on-error: true
+        timeout-minutes: 5
         uses: actions/upload-artifact@v7
         with:
           name: screenshots
@@ -122,6 +125,9 @@ jobs:
             | tail -n 20
       - name: Keep test results
         if: failure()
+        # Artifacts are a convenience (the log has small copies); slow storage must not fail CI.
+        continue-on-error: true
+        timeout-minutes: 5
         uses: actions/upload-artifact@v7
         with:
           name: test-results
@@ -227,6 +233,9 @@ jobs:
           done
       - name: Keep screenshots
         if: always()
+        # Artifacts are a convenience (the log has small copies); slow storage must not fail CI.
+        continue-on-error: true
+        timeout-minutes: 5
         uses: actions/upload-artifact@v7
         with:
           name: screenshots-ios27-${{ matrix.simulator == 'iPhone Duo' && 'duo' || 'iphone' }}
@@ -235,6 +244,9 @@ jobs:
           retention-days: 14
       - name: Keep test results
         if: failure()
+        # Artifacts are a convenience (the log has small copies); slow storage must not fail CI.
+        continue-on-error: true
+        timeout-minutes: 5
         uses: actions/upload-artifact@v7
         with:
           name: test-results-ios27-${{ matrix.simulator == 'iPhone Duo' && 'duo' || 'iphone' }}
