@@ -59,7 +59,7 @@ struct FoldTransitionTests {
         #expect(model.layout == .columns)
         #expect(model.path == [.media, .length, .style, .preview])
         #expect(model.activeStep == .generate)
-        #expect(window.rootViewController?.presentedViewController == nil)
+        #expect(await sheetShown(in: window, is: false))
         print("playback after unfolding: \(Self.describe(player)), draws frames itself: \(session.drawsFramesItself)")
         #expect(model.preview === session)
         #expect(player.rate > 0, "playback carries on through the change of layout")
@@ -84,7 +84,7 @@ struct FoldTransitionTests {
         #expect(model.sheet == .export)
         #expect(model.export === job)
         #expect(job.format == .square)
-        #expect(window.rootViewController?.presentedViewController != nil, "the export shows as a sheet on the phone layout")
+        #expect(await sheetShown(in: window, is: true), "the export shows as a sheet on the phone layout")
         await snapshot(window, "duo-outer-export")
 
         // And back: the sheet's state shows as the export step again.
@@ -92,7 +92,7 @@ struct FoldTransitionTests {
         try await settle()
         #expect(model.activeStep == .export)
         #expect(model.export === job)
-        #expect(window.rootViewController?.presentedViewController == nil, "and as a step, not a sheet, in two columns")
+        #expect(await sheetShown(in: window, is: false), "and as a step, not a sheet, in two columns")
         model.closeExport()
 
         // Text being typed in the sheet survives the sheet going away with the layout.
@@ -103,7 +103,7 @@ struct FoldTransitionTests {
         try await settle()
         #expect(model.sheet == .texts)
         #expect(model.texts?.title == "Midsommar")
-        #expect(window.rootViewController?.presentedViewController != nil, "the texts sheet comes back in the other layout")
+        #expect(await sheetShown(in: window, is: true), "the texts sheet comes back in the other layout")
         model.closeTexts(saving: false)
         #expect(model.draft.title != "Midsommar")
     }
@@ -215,6 +215,17 @@ struct FoldTransitionTests {
     /// Lets SwiftUI lay out, present and dismiss sheets.
     private func settle() async throws {
         try await Task.sleep(for: .seconds(1.5))
+    }
+
+    /// Whether a sheet is presented over the window, once its animation has had time to end:
+    /// presenting and dismissing are animated, and take longer on a busy machine.
+    private func sheetShown(in window: UIWindow, is expected: Bool) async -> Bool {
+        for _ in 0..<50 {
+            let shown = window.rootViewController?.presentedViewController.map { !$0.isBeingDismissed } ?? false
+            if shown == expected { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return false
     }
 
     /// Saved as a PNG and logged as small base64 lines, as ScreenshotTests does.

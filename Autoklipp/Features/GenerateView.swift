@@ -25,6 +25,8 @@ struct GenerateView: View {
         .navigationBarBackButtonHidden()
         .toolbarColorScheme(.dark, for: .navigationBar, .bottomBar)
         .flowActions([GenerationProgressView.leaveAction(model)])
+        // The button under the gradient dark too.
+        .environment(\.colorScheme, .dark)
     }
 }
 
