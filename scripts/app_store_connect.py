@@ -222,9 +222,11 @@ def main():
                     "type": "appStoreReviewDetails", "id": detail["id"],
                     "attributes": {"notes": notes, "demoAccountRequired": False}}})
             else:
-                api.request("POST", "/v1/appStoreReviewDetails", {"data": {
-                    "type": "appStoreReviewDetails", "attributes": {"notes": notes, "demoAccountRequired": False},
-                    "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}}}})
+                # Apple creates the App Review details only together with the contact's name, phone
+                # and e-mail, which are the developer's own and are not kept in the repository.
+                raise RuntimeError(
+                    "fill in the contact details under App Review Information in App Store Connect "
+                    "first, then run this again (or paste review_notes.txt there)")
         step("App Review notes", update_review_notes)
 
     # Screenshots for the 6.9" iPhone, on the primary language.

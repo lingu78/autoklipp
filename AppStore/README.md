@@ -63,8 +63,10 @@ Välj pris (t.ex. gratis) och länder.
 ## App Review Information
 
 - **Sign-in required:** nej.
-- **Notes:** `review_notes.txt`.
-- **Contact information:** ditt namn, telefon och e-post (syns bara för Apple).
+- **Contact information:** ditt namn, telefon och e-post (syns bara för Apple). Fyll i dem
+  först: Apple sparar anteckningarna bara tillsammans med kontaktuppgifterna.
+- **Notes:** `review_notes.txt`. Fylls i av arbetsflödet *App Store page* när kontaktuppgifterna
+  finns (kör det igen under Actions), eller klistra in filen.
 
 ## Övrigt
 
