@@ -162,7 +162,10 @@ Format: **Beslut** – motivering – (datum, fas).
 - **Kompositören kräver bildbuffertar som delas med GPU:n** (IOSurface, Metal-kompatibla), både
   för källbilder och utdata. Utan det kopierade Core Image varje bildruta via CPU:n: i simulatorn
   1,3 s per 1080p-bildruta mot 25 ms med delade buffertar. En 60 s film exporteras nu på under en
-  minut i CI. Ett test (`ExportSpeedTests`) vakar över detta. (2026-10-20, fas 1)
+  minut i CI. Ett test (`ExportSpeedTests`) vakar över detta. (2026-10-20, fas 1) Testet kontrollerar
+  buffertarna och att Core Image renderar på GPU:n direkt, via kompositörens spårrad för första
+  bildrutan. Tiden per bildruta (normalt 0,03–0,05 s) varierar med belastningen på CI-maskinerna –
+  0,45–0,6 s har setts med delade buffertar – och har därför bara en grov gräns på 1 s. (2026-11-12)
 - **Övergångar intill filmklipp utan extra material:** kompositionen håller klippets första respektive sista bildruta som frusen bild över halva övergången, i stället för att lämna spåret tomt (det gav en halv toning mot svart). (2026-10-21, granskning)
 - **En video som spelas något långsammare eller snabbare (högst 5 %)** får sitt eget ljud tidsskalat lika mycket som bilden, så att ljud och bild håller synk; tonhöjden bevaras (`AVAudioTimePitchAlgorithm.spectral`). (2026-10-21, granskning)
 - **Alla spår kapas vid filmens längd** och media läggs aldrig in före ett spårs nuvarande slut, så att avrundning till 1/600 s inte kan göra kompositionen längre än videokompositionens instruktion. Börjar en videos ljud senare än bilden behålls förskjutningen. (2026-10-21, granskning)
@@ -394,11 +397,12 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
 - **Förhandsvisningen ritar filmen själv om systemets spelare inte kan visa den.** På iPhone
   Duo-simulatorn med iOS 27.1 misslyckas varje spelarobjekt med en videokomposition så fort dess
   bild behövs – i `AVPlayerLayer`, `AVPlayerViewController`, SwiftUI:s `VideoPlayer` och i en
-  `AVPlayerItemVideoOutput` – med AVFoundation -11800/-12784, och det gäller även systemets egen
-  renderare (`AVVideoComposition(propertiesOf:)`), inte bara appens. En vanlig videofil och filmens
-  spår utan komposition visas; samma film spelas utan bild, och exporten och `AVAssetReader` genom
-  appens renderare fungerar (över 30 bildrutor/s i 1080p). iPhone 17 med iOS 27.2 visar filmen.
-  Felet ligger alltså i uppspelningens bildväg i den runtimen, inte i appens renderare; om det
+  `AVPlayerItemVideoOutput` – med AVFoundation -11800/-12784. En komposition med systemets egen
+  renderare (`AVVideoComposition(propertiesOf:)`) ger samma fel där (den varianten startar inte
+  heller på iOS 26.5, men utan fel, så den säger mindre). En vanlig videofil och filmens spår utan
+  komposition visas; samma film spelas utan bild, och exporten och `AVAssetReader` genom appens
+  renderare fungerar (över 30 bildrutor/s i 1080p). iPhone 17 med iOS 27.2 visar filmen. Felet
+  ligger alltså troligen i uppspelningens bildväg i den runtimen, inte i appens renderare; om det
   finns på en riktig iPhone Duo går inte att avgöra i CI, där iOS 27.1 bara finns för Duo.
   Därför följer förhandsvisningen spelarobjektets status: blir det `failed` medan filmen visas
   spelar `PreviewSession` i stället filmens ljud på en ny spelare utan videokomposition, som håller

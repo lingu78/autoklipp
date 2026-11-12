@@ -88,15 +88,23 @@ final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             return
         }
         let time = request.compositionTime.seconds
+        // Whether the frames handed over are shared with the GPU; nil while none was needed.
+        var sourcesShared: Bool?
         let image = instruction.renderer.image(at: time) { trackID in
-            request.sourceFrame(byTrackID: trackID)
+            let frame = request.sourceFrame(byTrackID: trackID)
+            if let frame { sourcesShared = (sourcesShared ?? true) && CVPixelBufferGetIOSurface(frame) != nil }
+            return frame
         }
         let context = RenderEnvironment.isInBackground ? cpuContext : gpuContext
         let size = request.renderContext.size
         context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: colorSpace)
         if !drewFirstFrame {
             drewFirstFrame = true
-            Self.trace?("first frame at \(time) s, \(size)")
+            let sources = sourcesShared.map { "\($0)" } ?? "none used"
+            Self.trace?(
+                "first frame at \(time) s, \(size), output shared with the GPU: \(CVPixelBufferGetIOSurface(output) != nil), "
+                    + "sources shared with the GPU: \(sources), on the GPU: \(context === gpuContext)"
+            )
         }
         request.finish(withComposedVideoFrame: output)
     }

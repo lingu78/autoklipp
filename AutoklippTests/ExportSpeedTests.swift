@@ -9,6 +9,10 @@ import Testing
 /// Frames must reach the compositor in buffers shared with the GPU. With plain buffers Core
 /// Image copied every 1080×1920 frame through the CPU: ~1.3 s per frame in the simulator
 /// instead of ~25 ms.
+///
+/// The buffers and the renderer are checked directly. The time per frame is only a coarse check:
+/// on the CI runners it varies with the load on the machine, and other simulators running at the
+/// same time have made it 0.45–0.6 s with shared buffers on the GPU.
 @Suite("Export speed")
 struct ExportSpeedTests {
     @Test(.timeLimit(.minutes(5)))
@@ -32,6 +36,9 @@ struct ExportSpeedTests {
 
         // The CPU renderer, used while the app is not active, is many times slower.
         print("compositor: app inactive or in background: \(RenderEnvironment.isInBackground)")
+        let trace = TraceLines()
+        ClipCompositor.trace = { trace.append($0) }
+        defer { ClipCompositor.trace = nil }
         let reader = try AVAssetReader(asset: built.composition)
         let output = AVAssetReaderVideoCompositionOutput(
             videoTracks: try await built.composition.loadTracks(withMediaType: .video),
@@ -49,6 +56,25 @@ struct ExportSpeedTests {
         #expect(frames >= 115, "\(frames) frames for a 4 s film")
         let perFrame = elapsed / max(1, frames)
         print("compositor: \(perFrame) per 1080x1920 frame")
-        #expect(perFrame < .milliseconds(200), "\(perFrame) per frame")
+
+        let first = trace.lines.first { $0.hasPrefix("first frame") }
+        print("compositor: \(first ?? "no first frame")")
+        #expect(first?.contains("output shared with the GPU: true") == true, "the compositor draws into a buffer shared with the GPU")
+        #expect(first?.contains("sources shared with the GPU: false") == false, "and is handed frames shared with it")
+        #expect(first?.contains("on the GPU: true") == true, "with Core Image on the GPU")
+        // Plain buffers took ~1.3 s per frame here and the CPU renderer longer still.
+        #expect(perFrame < .seconds(1), "\(perFrame) per frame")
     }
+}
+
+/// Lines from the compositor's trace, which it sends from its own queue.
+final class TraceLines: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+
+    func append(_ line: String) {
+        lock.withLock { stored.append(line) }
+    }
+
+    var lines: [String] { lock.withLock { stored } }
 }
