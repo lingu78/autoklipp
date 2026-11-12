@@ -18,6 +18,15 @@ struct BuiltComposition: @unchecked Sendable {
         item.audioTimePitchAlgorithm = .spectral
         return item
     }
+
+    /// The film's sound and timing without its picture, for a preview that draws the picture
+    /// itself (see ComposedFrames).
+    func makeSoundItem() -> AVPlayerItem {
+        let item = AVPlayerItem(asset: composition)
+        item.audioMix = audioMix
+        item.audioTimePitchAlgorithm = .spectral
+        return item
+    }
 }
 
 /// What the builder needs besides the clip list.

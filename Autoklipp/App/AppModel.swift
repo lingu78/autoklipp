@@ -777,23 +777,31 @@ final class PreviewSession {
     private(set) var built: BuiltComposition
     /// Replaced only when the film falls back to frames drawn by the app.
     private(set) var player: AVPlayer
-    /// Set when the film is drawn by the app from frames it pulls from the player, instead of by
-    /// a player layer. Used where the system cannot show the app's compositor in a player layer:
-    /// on the iPhone Duo simulator with iOS 27.1 the player item then fails before the
-    /// compositor is asked for a frame, while the same film plays with pulled frames.
-    private(set) var frameOutput: AVPlayerItemVideoOutput?
-    let drawnFrames = DrawnFrames()
+    /// Set when the app draws the film itself: frames read through the compositor the way the
+    /// export reads them, while the player plays only the sound and keeps the time. Used where
+    /// the system cannot show a film with a video composition: on the iPhone Duo simulator with
+    /// iOS 27.1 such a player item fails as soon as its picture is needed, in any player view or
+    /// video output and with the system's own compositor too, while the export works.
+    private(set) var frames: ComposedFrames?
     @ObservationIgnored private var triedDrawingItself = false
     /// Whether the app last asked the film to play, so that a fallback carries on as it was.
     @ObservationIgnored private var wantsToPlay = false
+    /// Once a film could not be shown, later films are drawn by the app from the start.
+    private static var systemCannotShowFilms = false
 
     init(edl: EditDecisionList, built: BuiltComposition) {
         self.edl = edl
         self.built = built
-        player = AVPlayer(playerItem: built.makePlayerItem())
+        if Self.systemCannotShowFilms {
+            player = AVPlayer(playerItem: built.makeSoundItem())
+            frames = ComposedFrames(built: built)
+            triedDrawingItself = true
+        } else {
+            player = AVPlayer(playerItem: built.makePlayerItem())
+        }
     }
 
-    var drawsFramesItself: Bool { frameOutput != nil }
+    var drawsFramesItself: Bool { frames != nil }
 
     func play() {
         wantsToPlay = true
@@ -810,39 +818,31 @@ final class PreviewSession {
     /// Called while the film is on screen: if showing it failed, it is drawn by the app instead.
     /// Decided by what happens on this device, not by its model.
     func fallBackIfShowingFailed() {
-        guard !triedDrawingItself, frameOutput == nil else { return }
+        guard !triedDrawingItself, frames == nil else { return }
         guard player.currentItem?.status == .failed || player.status == .failed else { return }
         triedDrawingItself = true
+        Self.systemCannotShowFilms = true
         ClipCompositor.trace?("showing the film failed (\(String(describing: player.currentItem?.error))), the app draws it itself")
         Task { await drawFramesItself() }
     }
 
-    /// Plays the film again from where it was, on a new player whose frames the app draws.
+    /// Plays the film again from where it was: the sound on a new player, the picture drawn by
+    /// the app.
     func drawFramesItself() async {
-        guard frameOutput == nil else { return }
+        guard frames == nil else { return }
         let resume = wantsToPlay || player.rate > 0
         let position = player.currentTime().seconds
         let old = player
         old.pause()
-        let output = Self.makeFrameOutput()
-        let item = built.makePlayerItem()
-        item.add(output)
-        // A new player, never attached to a player layer. Both change at once, so the views
-        // show the drawn frames and never put the new player in a player layer.
-        frameOutput = output
+        let item = built.makeSoundItem()
+        // Both change at once, so the views show the drawn frames instead of a player view.
+        frames = ComposedFrames(built: built)
         player = AVPlayer(playerItem: item)
         old.replaceCurrentItem(with: nil)
         await Self.waitUntilReady(item)
         let target = CMTime(seconds: min(max(0, position.isFinite ? position : 0), max(0, edl.duration - 0.1)), preferredTimescale: 600)
         _ = await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         if resume { play() }
-    }
-
-    static func makeFrameOutput() -> AVPlayerItemVideoOutput {
-        AVPlayerItemVideoOutput(pixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
-        ])
     }
 
     /// Takes a new clip list whose timing is unchanged (e.g. a lock).
@@ -856,12 +856,13 @@ final class PreviewSession {
         let position = time ?? player.currentTime().seconds
         self.edl = edl
         self.built = built
-        let item = built.makePlayerItem()
-        if frameOutput != nil {
-            // An output serves one item; the view follows the new one.
-            let output = Self.makeFrameOutput()
-            item.add(output)
-            frameOutput = output
+        let item: AVPlayerItem
+        if let shown = frames {
+            item = built.makeSoundItem()
+            // The new film's frames; the last frame stays on screen until they come.
+            frames = ComposedFrames(built: built, keeping: shown.lastImage)
+        } else {
+            item = built.makePlayerItem()
         }
         player.replaceCurrentItem(with: item)
         await Self.waitUntilReady(item)

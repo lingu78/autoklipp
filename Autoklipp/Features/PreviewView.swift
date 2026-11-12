@@ -125,8 +125,8 @@ struct FilmPlayerSection: View {
     /// The system's player, or the frames the app draws where the system cannot show the film.
     @ViewBuilder
     private var film: some View {
-        if let output = session.frameOutput {
-            PulledFramePlayer(output: output, frames: session.drawnFrames)
+        if let frames = session.frames {
+            PulledFramePlayer(frames: frames, player: session.player)
                 .overlay(alignment: .bottomLeading) {
                     Button(action: togglePlayback) {
                         Group {

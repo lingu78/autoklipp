@@ -54,9 +54,9 @@ struct PlaybackTests {
 
     /// On screen the compositor draws for display, which a player without a view never asks
     /// for. The film in a plain player layer, in AVKit's player and in SwiftUI's VideoPlayer is
-    /// logged only: the iPhone Duo simulator with iOS 27.1 cannot show the app's compositor in any
-    /// of them (-11800/-12784, while it shows a plain video). What must play is the app's own
-    /// preview, which falls back to drawing pulled frames itself where showing fails.
+    /// logged only: the iPhone Duo simulator with iOS 27.1 cannot show a video composition in
+    /// any of them (-11800/-12784, while it shows a plain video). What must play is the app's own
+    /// preview, which falls back to drawing frames it reads itself where showing fails.
     @Test(.timeLimit(.minutes(10)))
     func thePreviewPlaysOnScreen() async throws {
         let model = AppModel(inMemory: true)
@@ -137,16 +137,60 @@ struct PlaybackTests {
         }
     }
 
+    /// The frames the preview draws itself where the player cannot show the film: read through
+    /// the compositor as the export reads them, in step with the time asked for, also after a
+    /// jump back or ahead. Works on every simulator, unlike showing the film there.
+    @Test(.timeLimit(.minutes(5)))
+    func theAppReadsTheFilmsFramesItself() async throws {
+        let model = AppModel(inMemory: true)
+        try model.draft.storage.prepare()
+        defer { model.draft.storage.removeAll() }
+        model.draft.media = try await TestMedia.mixedSet(count: 8, in: model.draft.storage.mediaDirectory)
+        model.draft.lengthChoice = .preset(15)
+        let output = try await FilmGenerator.generate(GenerationInput(draft: model.draft), settings: .preview(.portrait)) { _, _ in }
+        let frames = ComposedFrames(built: output.built)
+        let size = output.built.videoComposition.renderSize
+
+        func image(at time: Double) async throws -> CGImage? {
+            for _ in 0..<150 {
+                if let image = frames.newImage(at: time) { return image }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            return nil
+        }
+        let first = try #require(try await image(at: 0), "the first frame is read")
+        #expect(first.width == Int(size.width) && first.height == Int(size.height))
+        #expect(frames.lastImage != nil)
+
+        // Playing for three seconds: a new frame for most of the film's 30 a second.
+        let clock = ContinuousClock()
+        let started = clock.now
+        var time = 0.0
+        var drawn = 0
+        while time < 3 {
+            try await Task.sleep(for: .milliseconds(30))
+            time = (clock.now - started) / .seconds(1)
+            if frames.newImage(at: time) != nil { drawn += 1 }
+        }
+        print("playback read frames: \(drawn) new frames in 3 s")
+        #expect(drawn > 30, "\(drawn) frames in 3 s")
+
+        // Back in the film, and far ahead, as the clip strip and edits move the player.
+        #expect(try await image(at: 0.5) != nil)
+        #expect(try await image(at: 10) != nil)
+    }
+
     static func views<V: UIView>(of type: V.Type, in view: UIView) -> [V] {
         view.subviews.flatMap { subview in
             (subview as? V).map { [$0] } ?? views(of: type, in: subview)
         }
     }
 
-    /// Whether frames pulled from the player come through, and which kind of film a player
-    /// layer shows: the tracks alone, the system's compositor, or the app's. Logs only;
-    /// thePreviewPlaysOnScreen decides. (A compositor that names no pixel format for its render
-    /// context makes AVFoundation stop the process, so none is tried.)
+    /// Which kind of film a player layer shows: the tracks alone, with the system's compositor,
+    /// or with the app's. Logs only; thePreviewPlaysOnScreen decides. (On the iPhone Duo
+    /// simulator with iOS 27.1 only the tracks alone show; a video output instead of a layer
+    /// fails the same way. A compositor that names no pixel format for its render context makes
+    /// AVFoundation stop the process, so none is tried.)
     @Test(.timeLimit(.minutes(10)))
     func variantsOfTheFilmOnScreen() async throws {
         let model = AppModel(inMemory: true)
@@ -166,26 +210,6 @@ struct PlaybackTests {
             ("system compositor", built.composition, try await AVMutableVideoComposition.videoComposition(withPropertiesOf: built.composition)),
             ("as built", built.composition, built.videoComposition),
         ]
-
-        // Frames pulled from the player instead of shown by a player layer.
-        let item = built.makePlayerItem()
-        let videoOutput = PreviewSession.makeFrameOutput()
-        item.add(videoOutput)
-        let pulling = AVPlayer(playerItem: item)
-        await PreviewSession.waitUntilReady(item)
-        pulling.play()
-        var frames = 0
-        for _ in 0..<40 {
-            try await Task.sleep(for: .milliseconds(50))
-            let time = videoOutput.itemTime(forHostTime: CACurrentMediaTime())
-            if videoOutput.hasNewPixelBuffer(forItemTime: time),
-               videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) != nil {
-                frames += 1
-            }
-        }
-        let pulled = item.status == .readyToPlay && frames > 5
-        print("playback with pulled frames: \(pulled ? "plays" : "fails") – \(frames) frames, \(FoldTransitionTests.describe(pulling))")
-        pulling.pause()
 
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
