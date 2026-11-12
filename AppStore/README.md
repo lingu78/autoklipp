@@ -7,11 +7,15 @@ Allt som behövs för att lägga ut Autoklipp 1.0 i App Store.
 ändras och skriver till App Store Connect med TestFlight-flödets API-nyckel: beskrivning, nyckelord,
 kampanjtext, namn och undertitel på engelska och svenska, kategorin, anteckningarna till App Review,
 6,9"-skärmbilderna och det senaste färdiga bygget av version 1.0. Webbadresser fylls i när filerna
-`support_url.txt`, `privacy_policy_url.txt` (och valfritt `marketing_url.txt`) finns i
-`en-US/` och `sv/`. Kvar för hand: sidhuvud- och sökresultatbilden, App Privacy, åldersgränsen,
-kontaktuppgifter till App Review, pris och tillgänglighet samt copyright. Texterna finns på engelska (`en-US/`,
-appens huvudspråk i App Store Connect) och svenska (`sv/`; lägg till språket *Swedish* uppe till
-höger i App Store Connect). Varje fil kan klistras in som den är.
+`support_url.txt`, `privacy_policy_url.txt` (och valfritt `marketing_url.txt`) finns i `en-US/`
+och `sv/`.
+
+**Kvar för hand:** sidhuvud- och sökresultatbilden, App Privacy, åldersgränsen, kontaktuppgifter
+till App Review, pris och tillgänglighet samt copyright.
+
+Texterna finns på engelska (`en-US/`, appens huvudspråk i App Store Connect) och svenska (`sv/`).
+Varje fil kan klistras in som den är. Skärmbilderna laddas upp på engelska; svenska sidan visar
+samma bilder tills den får egna.
 
 ## Version 1.0 – Product Page Information (per språk)
 
