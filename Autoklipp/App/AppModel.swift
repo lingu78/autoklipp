@@ -736,7 +736,7 @@ final class ProjectDraft {
     }
 
     var mediaURLs: [String: URL] {
-        Dictionary(uniqueKeysWithValues: media.map { ($0.item.id, $0.url) })
+        Dictionary(media.map { ($0.item.id, $0.url) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Copies a song of the user's own into the project and finds its beat.

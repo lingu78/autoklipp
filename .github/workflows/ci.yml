@@ -77,6 +77,8 @@ jobs:
         run: |
           xcrun simctl bootstatus "$UDID" -b > /dev/null
           xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+          # Full access for ImportStressTests, which picks items from the library by identifier.
+          xcrun simctl privacy "$UDID" grant photos se.autoklipp.app
       - name: Test
         env:
           TEST_RUNNER_AUTOKLIPP_CI: "1"
@@ -224,6 +226,8 @@ jobs:
         run: |
           xcrun simctl bootstatus "$UDID" -b > /dev/null
           xcrun simctl privacy "$UDID" grant photos-add se.autoklipp.app
+          # Full access for ImportStressTests, which picks items from the library by identifier.
+          xcrun simctl privacy "$UDID" grant photos se.autoklipp.app
       - name: Test
         env:
           TEST_RUNNER_AUTOKLIPP_CI: "1"

@@ -161,9 +161,11 @@ enum MediaImporter {
         let box = ObservationBox()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                // Resumed once, even if a cancelled load were to report twice.
+                let once = ResumeOnce(continuation)
                 let progress = item.loadTransferable(type: PickedFile.self) { result in
                     box.invalidate()
-                    continuation.resume(with: result)
+                    once.resume(with: result)
                 }
                 box.start(progress, onProgress: onProgress)
             }
@@ -173,14 +175,36 @@ enum MediaImporter {
     }
 }
 
+/// A continuation that can be resumed only once; later results are dropped.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<PickedFile?, any Error>?
+
+    init(_ continuation: CheckedContinuation<PickedFile?, any Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(with result: Result<PickedFile?, any Error>) {
+        let pending = lock.withLock {
+            let pending = continuation
+            continuation = nil
+            return pending
+        }
+        pending?.resume(with: result)
+    }
+}
+
 /// Keeps a progress observation alive until the load finishes.
 private final class ObservationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var observation: NSKeyValueObservation?
     private var progress: Progress?
+    /// The load ended, possibly before observing began: nothing more to observe then.
+    private var ended = false
 
     func start(_ progress: Progress, onProgress: @escaping @Sendable (Double) -> Void) {
         lock.withLock {
+            guard !ended else { return }
             self.progress = progress
             observation = progress.observe(\.fractionCompleted, options: [.new]) { progress, _ in
                 onProgress(progress.fractionCompleted)
@@ -190,6 +214,7 @@ private final class ObservationBox: @unchecked Sendable {
 
     func invalidate() {
         lock.withLock {
+            ended = true
             observation?.invalidate()
             observation = nil
         }

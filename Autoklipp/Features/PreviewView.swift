@@ -106,7 +106,7 @@ struct FilmPlayerSection: View {
 
             ClipStripView(
                 clips: session.edl.clips,
-                media: Dictionary(uniqueKeysWithValues: model.draft.media.map { ($0.id, $0) }),
+                media: Dictionary(model.draft.media.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
                 currentTime: currentTime,
                 isBusy: model.isEditing || isBusy,
                 onSelect: { clip in

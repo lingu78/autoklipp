@@ -223,7 +223,7 @@ enum FilmGenerator {
     {
         let inputs = RenderInputs(
             edl: edl,
-            media: Dictionary(uniqueKeysWithValues: media.map { ($0.id, $0) }),
+            media: Dictionary(media.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
             musicURL: song?.url,
             settings: settings
         )

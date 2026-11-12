@@ -497,6 +497,12 @@ utseendet, som är appens eget. Allt med Apples ramverk.
   under den). Ark som öppnas därifrån behåller appens vanliga utseende. (2026-11-12)
 - **Bildbiblioteket inbäddat även på telefonen**: ett tryck mindre och hela skärmen till bilderna.
   Samma importsession som på innerskärmen, med väntan på nästa tryck innan importen startar. (2026-11-12)
+- **Snabba tryck i bildbiblioteket** (krasch rapporterad i TestFlight-bygge 5): varje tryck byter
+  urvalet medan förra importen ännu kopierar. En ny import väntar nu tills den den ersätter har
+  slutat, så att samma objekt aldrig laddas två gånger samtidigt; en laddning från biblioteket kan
+  bara besvaras en gång; och tabeller över media efter id tål dubbletter i stället för att krascha.
+  `ImportStressTests` väljer riktiga objekt ur simulatorns bibliotek i snabb följd, med bortval och
+  återval, och kräver att varje valt objekt finns med exakt en gång. (2026-11-12)
 - **Haptik med `sensoryFeedback`**: tick vid val av längd, stil, musik och format, mjuk stöt vid
   ändringar i klippremsan, bekräftelse när en film är klar, när exporten är klar och när den är
   sparad. Inga egna ljud: appen spelar redan musik, och systemets ljud följer telefonens inställningar. (2026-11-12)

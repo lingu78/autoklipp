@@ -160,12 +160,16 @@ final class MediaImportSession {
     func select(_ items: [PhotosPickerItem]) {
         guard items != selection else { return }
         selection = items
-        task?.cancel()
+        let previous = task
+        previous?.cancel()
         run += 1
         let current = run
         isBusy = true
         task = Task {
             defer { if self.run == current { self.isBusy = false } }
+            // One import at a time: the one replaced stops before this one starts, so an item is
+            // never loaded twice at once, which quick taps in the picker used to do.
+            await previous?.value
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             await self.sync(with: items)
@@ -197,7 +201,7 @@ final class MediaImportSession {
                   FileManager.default.fileExists(atPath: media.url.path(percentEncoded: false))
             else { continue }
             importedIdentifiers[identifier] = media.id
-            draft.media.append(media)
+            if !draft.media.contains(where: { $0.id == media.id }) { draft.media.append(media) }
         }
         // Each selected item that failed counts once, and a deselected one no longer counts.
         failedIdentifiers.formIntersection(keep)
@@ -219,7 +223,7 @@ final class MediaImportSession {
             }
             failedIdentifiers.remove(identifier)
             importedIdentifiers[identifier] = media.id
-            draft.media.append(media)
+            if !draft.media.contains(where: { $0.id == media.id }) { draft.media.append(media) }
         }
         draft.skippedCount = failedIdentifiers.count
         reorder(by: wanted)
