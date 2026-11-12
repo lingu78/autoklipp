@@ -217,16 +217,21 @@ def main():
                 if error.status != 404:
                     raise
                 detail = None
-            if detail:
+            # Apple keeps the App Review details only together with the contact's name, phone and
+            # e-mail, which are the developer's own and are not kept in the repository.
+            missing_contact = RuntimeError(
+                "fill in the contact details under App Review Information in App Store Connect "
+                "first, then run this again (or paste review_notes.txt there)")
+            if not detail:
+                raise missing_contact
+            try:
                 api.request("PATCH", f"/v1/appStoreReviewDetails/{detail['id']}", {"data": {
                     "type": "appStoreReviewDetails", "id": detail["id"],
                     "attributes": {"notes": notes, "demoAccountRequired": False}}})
-            else:
-                # Apple creates the App Review details only together with the contact's name, phone
-                # and e-mail, which are the developer's own and are not kept in the repository.
-                raise RuntimeError(
-                    "fill in the contact details under App Review Information in App Store Connect "
-                    "first, then run this again (or paste review_notes.txt there)")
+            except ApiError as error:
+                if error.status == 409 and "contact" in str(error):
+                    raise missing_contact from error
+                raise
         step("App Review notes", update_review_notes)
 
     # Screenshots for the 6.9" iPhone, on the primary language.
