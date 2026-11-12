@@ -157,8 +157,8 @@ final class MediaImportSession {
 
     /// Takes a new selection from the picker. The embedded picker reports every tap, so the
     /// import waits a moment for the next one instead of starting for each. Taps during an
-    /// import are taken up when it is done: a load is never stopped halfway, since quick taps
-    /// that stopped loads left those items failing to load when they were picked again.
+    /// import are taken up when it is done: one import at a time, never stopped halfway (only
+    /// leaving the project stops it), so no item is ever loaded twice at once.
     func select(_ items: [PhotosPickerItem]) {
         guard items != selection else { return }
         selection = items
