@@ -508,6 +508,19 @@ utseendet, som är appens eget. Allt med Apples ramverk.
 - **Skärmbilder:** `ScreenshotTests.flowTour` visar längd, stil, film, export, generering och
   bibliotek på varje simulators skärm och loggar dem i CI. (2026-11-12)
 
+## 8d. App Store (2026-11-12)
+
+- **Version 1.0** (`MARKETING_VERSION`), så att bygget kan väljas för version 1.0 i App Store Connect.
+- **Produktsidans texter** på engelska (huvudspråk) och svenska i `AppStore/`, inom Apples
+  gränser (namn och undertitel 30 tecken, kampanjtext 170, nyckelord 100 byte). Nyckelorden
+  upprepar inte ord ur namn och undertitel, som redan söks på.
+- **Bilderna görs av appens egna skärmar** i CI (`StoreAssetsTests`, bara i iOS 26.5-jobbet): en
+  film av målade landskap, skärmarna ritade i 6,9"-storlek (1320 × 2868), sidhuvud 3840 × 1646
+  (21:9) och sökresultatbild 3840 × 2560 (3:2) som JPEG utan genomskinlighet. Engelsk text i
+  bilderna; de svenska sidorna kan använda samma bilder.
+- **Integritet:** appen samlar inga uppgifter och använder inte nätverket; policyn i
+  `AppStore/privacy-policy.md` säger det och behöver bara en kontaktadress och en plats på webben.
+
 ## 9. Öppna frågor (från SPEC.md)
 
 | Fråga                                   | Status                                                                 |

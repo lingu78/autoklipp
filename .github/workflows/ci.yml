@@ -82,6 +82,8 @@ jobs:
           TEST_RUNNER_AUTOKLIPP_CI: "1"
           TEST_RUNNER_AUTOKLIPP_FACE_IMAGE: ${{ runner.temp }}/portrait.jpg
           TEST_RUNNER_AUTOKLIPP_SCREENSHOTS: ${{ runner.temp }}/screenshots
+          # The App Store's product page images (AppStore/README.md), made on this job only.
+          TEST_RUNNER_AUTOKLIPP_STORE_ASSETS: "1"
         run: |
           set +e
           # One test at a time: the runner has three cores and the export tests are heavy.

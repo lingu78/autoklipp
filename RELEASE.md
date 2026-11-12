@@ -40,6 +40,12 @@ kräver ditt Apple-konto.
 3. 🔑 Första gången: App Store Connect → appen → TestFlight → Interna tester → lägg till dig själv.
 4. Installera **TestFlight** från App Store på iPhonen, öppna inbjudan och tryck Installera.
 
+## Lägga ut i App Store
+
+Texter, bilder och en checklista för produktsidan finns i [AppStore/README.md](AppStore/README.md).
+Versionen i App Store Connect är 1.0; byggen från TestFlight-flödet har version 1.0 sedan
+2026-11-12 och kan väljas under *Build* på versionssidan.
+
 ## Bra att veta
 
 - Appen kräver iOS 26. Regissören med Apple Intelligence (fas 5) kräver dessutom en iPhone som

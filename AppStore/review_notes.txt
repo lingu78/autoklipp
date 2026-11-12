@@ -1,0 +1,9 @@
+Autoklipp needs no account and no network connection; everything runs on the device.
+
+To try it: tap New film, pick a few photos and videos, choose a length (for example 30 sec), choose a style and a song, and tap Create film. The finished film plays with a clip strip under it (drag to reorder, swipe up to remove, touch and hold to lock). Tap Export to save it to Photos or share it.
+
+"Describe your film" uses Apple Intelligence on the device (Foundation Models) and appears only where Apple Intelligence is available; without it the app works the same, without the description.
+
+All built-in music was composed for the app and is dedicated to the public domain (CC0), so films made with it can be shared freely.
+
+On iPhone Duo the app shows two columns on the inner display and keeps playing when the phone is folded or unfolded.
