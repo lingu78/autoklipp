@@ -105,6 +105,8 @@ STRINGS = {
     "%lld BPM": "%lld BPM",
     "Photos: %lld · Videos: %lld · Video length: %@": "Bilder: %lld · Filmer: %lld · Filmlängd: %@",
     "Film preview": "Förhandsvisning av filmen",
+    "Play": "Spela",
+    "Pause": "Pausa",
     "Creating film": "Skapar film",
     "Length": "Längd",
     "New film": "Ny film",

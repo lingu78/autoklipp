@@ -87,4 +87,5 @@ vanliga iPhones._
 - [x] Kolumnerna möts vid vecket när telefonen är delvis vikt (`ReservedRegion`)
 - [x] CI med Xcode 27.1 på iPhone Duo (iOS 27.1) och iPhone 17 (iOS 27), kvar med Xcode 26.6 på iOS 26.5
 - [x] `FlowTests` och `FoldTransitionTests`
+- [ ] Förhandsvisningen på iPhone Duo-simulatorn: ritar egna bildrutor där spelarvyerna inte kan visa filmen (väntar på CI)
 

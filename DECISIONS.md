@@ -348,7 +348,8 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
 | `Features/LengthView.swift` | Valen utbrutna till `LengthOptions` (används även i panelen). |
 | `Features/StyleView.swift` | Sektionerna utbrutna till `StyleSections`; låtanalysens status i utkastet. |
 | `Features/GenerateView.swift` | Visar modellens jobb; stegvisningen utbruten till `GenerationProgressView`. |
-| `Features/PreviewView.swift` | Spelare + klippremsa utbrutna till `FilmPlayerSection`; arken styrs av modellen. |
+| `Features/PreviewView.swift` | Spelare + klippremsa utbrutna till `FilmPlayerSection`; arken styrs av modellen. Visar egna bildrutor (`PulledFramePlayer`) när systemets spelare inte kan visa filmen. |
+| `Features/PulledFramePlayer.swift` (ny) | Ritar filmens bildrutor, hämtade från spelaren med `AVPlayerItemVideoOutput`, vid varje skärmuppdatering. |
 | `Features/ExportView.swift` | Visar modellens `ExportJob`; formulärdelen utbruten till `ExportSections`. |
 | `Support/SideBars.swift` (ny) | `flowActions`: knappar under innehållet, eller i systemets sidofält när det ligger på sidan. Vecket via `ReservedRegion`. |
 
@@ -388,6 +389,21 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
   (`isFilmOnScreen`: annat steg, ett ark över filmen eller mediasteget i två kolumner) och startas
   bara när en ny film blir klar eller ett öppnat projekt är byggt – aldrig av att en vy visas, så en
   pausad film förblir pausad efter vikningen. (2026-11-11)
+- **Förhandsvisningen ritar filmen själv om systemets spelare inte kan visa den.** På iPhone
+  Duo-simulatorn med iOS 27.1 misslyckas varje spelarobjekt med appens egen renderare
+  (`AVVideoCompositing`) så fort det visas i en spelarvy – `AVPlayerLayer`, `AVPlayerViewController`
+  och SwiftUI:s `VideoPlayer` – med AVFoundation -11800/-12784, innan renderaren ens får sin
+  renderkontext. En vanlig videofil och filmens spår utan renderaren visas; samma film spelas utan
+  vy och exporteras som vanligt; iPhone 17 med iOS 27.2 visar den. Färgegenskaperna, buffertformat
+  och färghantering i renderaren och det svarta bärarspåret har uteslutits ett i taget. Därför följer
+  förhandsvisningen spelarobjektets status: blir det `failed` medan filmen visas byter
+  `PreviewSession` till en ny spelare som aldrig sitter i en spelarvy, hämtar bildrutorna med
+  `AVPlayerItemVideoOutput` och `FilmPlayerSection` ritar dem (`PulledFramePlayer`) med en spela/
+  pausa-knapp; ljudet, positionen och om filmen spelade följer med. Valet görs av vad som händer på
+  enheten, inte av enhetsmodell, så vanliga iPhones använder systemets spelare som förut. Det som
+  saknas i reservläget är systemspelarens tidslinje och AirPlay; klippremsan används för att hoppa i
+  filmen. En renderare som inte anger något pixelformat för renderkontexten får AVFoundation att
+  avbryta processen, så den varianten provas inte. (2026-11-12)
 - **Ark stängs bara av modellen.** När layouten byts försvinner arket med den gamla vyn; modellen
   ignorerar den stängningen och den nya layouten visar samma tillstånd (export som ark ↔ som steg).
   Därför går arken inte att svepa bort; de har Avbryt/Stäng/Klar. (2026-11-11)
@@ -415,6 +431,9 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
   och ändrar dess storlek och size class mellan ytter- och innerskärm, som ut- och ihopfällning gör:
   filmen spelar vidare, exporten och titeltexten följer med, en pågående generering fortsätter, och
   för smal Split View ger en kolumn. Skärmbilder av båda skärmarna loggas i CI. (2026-11-11)
+  `PlaybackTests.thePreviewPlaysOnScreen` visar appens egen förhandsvisning i ett fönster och kräver
+  att filmen går framåt, och att bildrutor ritas när reservläget används; systemets spelarvyer med
+  filmen loggas bara. (2026-11-12)
 
 **Antaganden**
 

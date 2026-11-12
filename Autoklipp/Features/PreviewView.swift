@@ -75,17 +75,17 @@ struct FilmPlayerSection: View {
     let session: PreviewSession
     var isBusy = false
     @State private var currentTime = 0.0
+    @State private var isPlaying = false
 
     var body: some View {
         VStack(spacing: 12) {
-            VideoPlayer(player: session.player)
+            film
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .background(.black)
                 .clipShape(.rect(cornerRadius: 12))
                 // Centred; the black stays inside the film's own shape.
                 .frame(maxWidth: .infinity)
-                .accessibilityLabel(Text("Film preview"))
-                .task(id: ObjectIdentifier(session)) { await followPlayback(session.player) }
+                .task(id: ObjectIdentifier(session)) { await followPlayback(session) }
                 .padding(.horizontal)
 
             ForEach(Array(session.edl.notices.enumerated()), id: \.offset) { entry in
@@ -122,6 +122,44 @@ struct FilmPlayerSection: View {
         }
     }
 
+    /// The system's player, or the frames the app draws where the system cannot show the film.
+    @ViewBuilder
+    private var film: some View {
+        if let output = session.frameOutput {
+            PulledFramePlayer(output: output, frames: session.drawnFrames)
+                .overlay(alignment: .bottomLeading) {
+                    Button(action: togglePlayback) {
+                        Group {
+                            if isPlaying {
+                                Label("Pause", systemImage: "pause.fill")
+                            } else {
+                                Label("Play", systemImage: "play.fill")
+                            }
+                        }
+                        .labelStyle(.iconOnly)
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .background(.black.opacity(0.45), in: .circle)
+                    .padding(10)
+                }
+                .contentShape(.rect)
+                .onTapGesture(perform: togglePlayback)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(Text("Film preview"))
+        } else {
+            VideoPlayer(player: session.player)
+                .accessibilityLabel(Text("Film preview"))
+        }
+    }
+
+    private func togglePlayback() {
+        if session.isPlaying { session.pause() } else { session.play() }
+        isPlaying = session.isPlaying
+    }
+
     private var aspectRatio: CGFloat {
         let size = RenderSettings.preview(model.draft.format).renderSize
         return size.width / size.height
@@ -141,10 +179,14 @@ struct FilmPlayerSection: View {
         }
     }
 
-    private func followPlayback(_ player: AVPlayer) async {
+    /// Follows the film for the clip strip, and lets the session fall back to drawing the film
+    /// itself if showing it failed.
+    private func followPlayback(_ session: PreviewSession) async {
         while !Task.isCancelled {
-            let seconds = player.currentTime().seconds
+            session.fallBackIfShowingFailed()
+            let seconds = session.player.currentTime().seconds
             currentTime = seconds.isFinite ? seconds : 0
+            isPlaying = session.isPlaying
             try? await Task.sleep(for: .milliseconds(250))
         }
     }

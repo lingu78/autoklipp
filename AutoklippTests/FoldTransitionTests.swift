@@ -36,16 +36,18 @@ struct FoldTransitionTests {
         let model = try await AdjustmentTests().preparedModel()
         let storage = model.draft.storage
         defer { storage.removeAll() }
-        let player = try #require(model.preview?.player)
+        let session = try #require(model.preview)
+        // Where the system cannot show the film, the session moves it to a player of its own.
+        var player: AVPlayer { session.player }
         model.path = [.media, .length, .style, .preview]
 
         let window = try host(model, on: Self.outer)
         defer { close(window, model) }
         try await settle()
         #expect(model.layout == .stack)
-        player.play()
+        session.play()
         try await Task.sleep(for: .seconds(1))
-        print("playback before unfolding: \(Self.describe(player))")
+        print("playback before unfolding: \(Self.describe(player)), draws frames itself: \(session.drawsFramesItself)")
         #expect(player.rate > 0)
         await snapshot(window, "duo-outer-preview")
 
@@ -58,7 +60,8 @@ struct FoldTransitionTests {
         #expect(model.path == [.media, .length, .style, .preview])
         #expect(model.activeStep == .generate)
         #expect(window.rootViewController?.presentedViewController == nil)
-        print("playback after unfolding: \(Self.describe(player))")
+        print("playback after unfolding: \(Self.describe(player)), draws frames itself: \(session.drawsFramesItself)")
+        #expect(model.preview === session)
         #expect(player.rate > 0, "playback carries on through the change of layout")
         if showsVideo {
             #expect(player.currentTime().seconds > beforeUnfolding)
@@ -196,7 +199,7 @@ struct FoldTransitionTests {
 
     /// Stops the film and lets the window go, so that nothing keeps playing into later tests.
     private func close(_ window: UIWindow, _ model: AppModel) {
-        model.preview?.player.pause()
+        model.preview?.pause()
         model.closePreview()
         window.isHidden = true
         window.rootViewController = nil

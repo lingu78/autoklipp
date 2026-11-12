@@ -891,6 +891,16 @@
         }
       }
     },
+    "Pause": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pausa"
+          }
+        }
+      }
+    },
     "Photo": {
       "localizations": {
         "sv": {
@@ -937,6 +947,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Välj bilder och filmer, välj en längd och få en färdig film med musik."
+          }
+        }
+      }
+    },
+    "Play": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spela"
           }
         }
       }

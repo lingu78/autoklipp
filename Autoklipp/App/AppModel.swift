@@ -116,7 +116,7 @@ final class AppModel {
     func leftFlow() {
         guard path.isEmpty else { return }
         stopFlow()
-        preview?.player.pause()
+        preview?.pause()
     }
 
     /// Throws away the current project, including its copied media and any saved copy.
@@ -256,7 +256,7 @@ final class AppModel {
     // MARK: Preview
 
     func closePreview() {
-        preview?.player.pause()
+        preview?.pause()
         preview = nil
     }
 
@@ -269,7 +269,7 @@ final class AppModel {
             guard draft.edl == edl, preview == nil, !Task.isCancelled else { return }
             let session = PreviewSession(edl: edl, built: built)
             preview = session
-            if isFilmOnScreen { session.player.play() }
+            if isFilmOnScreen { session.play() }
         } catch {
             // Not for a film the user left (or deleted) before it was ready.
             if draft.edl == edl, !Task.isCancelled { message = Self.buildFailedMessage }
@@ -332,7 +332,7 @@ final class AppModel {
             let seekTime = focus.flatMap { id in edl.clips.first { $0.id == id }?.timelineStart }
             await session.replace(edl: edl, built: built, seekTo: seekTime)
             // The user went back or opened another film meanwhile: this one must not play unseen.
-            if !isFilmOnScreen || preview !== session { session.player.pause() }
+            if !isFilmOnScreen || preview !== session { session.pause() }
         } catch {
             // Reported only for the film still shown, the same as a finished result.
             if draft.edl == edl, preview === session { message = Self.buildFailedMessage }
@@ -355,7 +355,7 @@ final class AppModel {
         choicesBeforeChange = nil
         if sheet == .style || sheet == .music { sheet = nil }
         if newVersion { draft.seed = UInt64.random(in: 1...UInt64.max) }
-        preview?.player.pause()
+        preview?.pause()
         draft.forgetDirectorPlanIfStale()
         let job = GenerationJob(steps: GenerationStep.steps(directed: !draft.instructionInEffect.isEmpty && draft.directorPlan == nil))
         generation = job
@@ -377,7 +377,7 @@ final class AppModel {
             try Task.checkCancellation()
             guard generation === job, draft === self.draft else { return }
             draft.adopt(output, from: input)
-            preview?.player.pause()
+            preview?.pause()
             let session = PreviewSession(edl: output.edl, built: output.built)
             preview = session
             save()
@@ -388,7 +388,7 @@ final class AppModel {
                 // A new version replaces the film in the preview underneath.
                 if path.last != .preview { path.append(.preview) }
             }
-            if isFilmOnScreen { session.player.play() }
+            if isFilmOnScreen { session.play() }
         } catch is CancellationError {
             return
         } catch {
@@ -775,12 +775,74 @@ final class ProjectDraft {
 final class PreviewSession {
     private(set) var edl: EditDecisionList
     private(set) var built: BuiltComposition
-    let player: AVPlayer
+    /// Replaced only when the film falls back to frames drawn by the app.
+    private(set) var player: AVPlayer
+    /// Set when the film is drawn by the app from frames it pulls from the player, instead of by
+    /// a player layer. Used where the system cannot show the app's compositor in a player layer:
+    /// on the iPhone Duo simulator with iOS 27.1 the player item then fails before the
+    /// compositor is asked for a frame, while the same film plays with pulled frames.
+    private(set) var frameOutput: AVPlayerItemVideoOutput?
+    let drawnFrames = DrawnFrames()
+    @ObservationIgnored private var triedDrawingItself = false
+    /// Whether the app last asked the film to play, so that a fallback carries on as it was.
+    @ObservationIgnored private var wantsToPlay = false
 
     init(edl: EditDecisionList, built: BuiltComposition) {
         self.edl = edl
         self.built = built
         player = AVPlayer(playerItem: built.makePlayerItem())
+    }
+
+    var drawsFramesItself: Bool { frameOutput != nil }
+
+    func play() {
+        wantsToPlay = true
+        player.play()
+    }
+
+    func pause() {
+        wantsToPlay = false
+        player.pause()
+    }
+
+    var isPlaying: Bool { player.rate > 0 }
+
+    /// Called while the film is on screen: if showing it failed, it is drawn by the app instead.
+    /// Decided by what happens on this device, not by its model.
+    func fallBackIfShowingFailed() {
+        guard !triedDrawingItself, frameOutput == nil else { return }
+        guard player.currentItem?.status == .failed || player.status == .failed else { return }
+        triedDrawingItself = true
+        ClipCompositor.trace?("showing the film failed (\(String(describing: player.currentItem?.error))), the app draws it itself")
+        Task { await drawFramesItself() }
+    }
+
+    /// Plays the film again from where it was, on a new player whose frames the app draws.
+    func drawFramesItself() async {
+        guard frameOutput == nil else { return }
+        let resume = wantsToPlay || player.rate > 0
+        let position = player.currentTime().seconds
+        let old = player
+        old.pause()
+        let output = Self.makeFrameOutput()
+        let item = built.makePlayerItem()
+        item.add(output)
+        // A new player, never attached to a player layer. Both change at once, so the views
+        // show the drawn frames and never put the new player in a player layer.
+        frameOutput = output
+        player = AVPlayer(playerItem: item)
+        old.replaceCurrentItem(with: nil)
+        await Self.waitUntilReady(item)
+        let target = CMTime(seconds: min(max(0, position.isFinite ? position : 0), max(0, edl.duration - 0.1)), preferredTimescale: 600)
+        _ = await player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        if resume { play() }
+    }
+
+    static func makeFrameOutput() -> AVPlayerItemVideoOutput {
+        AVPlayerItemVideoOutput(pixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
+        ])
     }
 
     /// Takes a new clip list whose timing is unchanged (e.g. a lock).
@@ -795,6 +857,12 @@ final class PreviewSession {
         self.edl = edl
         self.built = built
         let item = built.makePlayerItem()
+        if frameOutput != nil {
+            // An output serves one item; the view follows the new one.
+            let output = Self.makeFrameOutput()
+            item.add(output)
+            frameOutput = output
+        }
         player.replaceCurrentItem(with: item)
         await Self.waitUntilReady(item)
         let target = CMTime(seconds: min(max(0, position.isFinite ? position : 0), max(0, edl.duration - 0.1)), preferredTimescale: 600)

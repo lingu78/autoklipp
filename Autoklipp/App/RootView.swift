@@ -27,7 +27,7 @@ struct RootView: View {
         }
         // Only leaving the film pauses it; a new layout showing it again keeps it playing.
         .onChange(of: model.isFilmOnScreen) { _, onScreen in
-            if !onScreen { model.preview?.player.pause() }
+            if !onScreen { model.preview?.pause() }
         }
         .onChange(of: model.path.isEmpty) { _, isEmpty in
             if isEmpty { model.leftFlow() }

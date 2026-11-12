@@ -53,8 +53,10 @@ struct PlaybackTests {
     }
 
     /// On screen the compositor draws for display, which a player without a view never asks
-    /// for: the preview in a plain player layer, in AVKit's player and in SwiftUI's VideoPlayer
-    /// (the app's own view).
+    /// for. The film in a plain player layer, in AVKit's player and in SwiftUI's VideoPlayer is
+    /// logged only: the iPhone Duo simulator with iOS 27.1 cannot show the app's compositor in any
+    /// of them (-11800/-12784, while it shows a plain video). What must play is the app's own
+    /// preview, which falls back to drawing pulled frames itself where showing fails.
     @Test(.timeLimit(.minutes(10)))
     func thePreviewPlaysOnScreen() async throws {
         let model = AppModel(inMemory: true)
@@ -99,18 +101,52 @@ struct PlaybackTests {
         window.rootViewController = UIHostingController(rootView: VideoPlayer(player: swiftUIPlayer))
         report["in VideoPlayer"] = await Self.playsOnScreen(swiftUIPlayer, "in VideoPlayer")
 
+        // The app's own preview, as both layouts show it.
+        let session = PreviewSession(edl: output.edl, built: built)
+        model.preview = session
+        window.rootViewController = UIHostingController(
+            rootView: ScrollView { FilmPlayerSection(session: session) }.environment(model)
+        )
+        try await Task.sleep(for: .milliseconds(500))
+        session.play()
+        var advanced = false
+        for _ in 0..<40 {
+            try await Task.sleep(for: .milliseconds(200))
+            if session.player.currentTime().seconds > 1 {
+                advanced = true
+                break
+            }
+        }
+        let drawn = Self.views(of: PulledFrameView.self, in: window).reduce(0) { $0 + $1.framesDrawn }
+        print("playback on screen the app's preview: \(advanced ? "plays" : "fails"), draws frames itself: \(session.drawsFramesItself), \(drawn) frames drawn – \(FoldTransitionTests.describe(session.player))")
+        session.pause()
+        model.preview = nil
+        print("playback on screen report: \(report)")
+
         if showsVideo {
-            #expect(report["in VideoPlayer"] == true, "the preview plays on screen: \(report)")
+            #expect(advanced, "the app's preview plays on screen")
+            if session.drawsFramesItself {
+                #expect(drawn > 10, "and its frames are drawn")
+            } else {
+                #expect(report["in VideoPlayer"] == true, "the system's player shows it where the app does not draw it")
+            }
         } else {
             withKnownIssue("This simulator shows no video on screen, not even a plain file", isIntermittent: true) {
-                #expect(report["in VideoPlayer"] == true, "the preview plays on screen: \(report)")
+                #expect(advanced, "the app's preview plays on screen")
             }
         }
     }
 
-    /// Which part of the film a player showing it on screen refuses: the tracks alone, the
-    /// video composition's colour properties, the compositor's buffers or colour handling, or the
-    /// black carrier track stretched under the film. Logs only; thePreviewPlaysOnScreen decides.
+    static func views<V: UIView>(of type: V.Type, in view: UIView) -> [V] {
+        view.subviews.flatMap { subview in
+            (subview as? V).map { [$0] } ?? views(of: type, in: subview)
+        }
+    }
+
+    /// Whether frames pulled from the player come through, and which kind of film a player
+    /// layer shows: the tracks alone, the system's compositor, or the app's. Logs only;
+    /// thePreviewPlaysOnScreen decides. (A compositor that names no pixel format for its render
+    /// context makes AVFoundation stop the process, so none is tried.)
     @Test(.timeLimit(.minutes(10)))
     func variantsOfTheFilmOnScreen() async throws {
         let model = AppModel(inMemory: true)
@@ -123,35 +159,33 @@ struct PlaybackTests {
         ClipCompositor.trace = { print("compositor: \($0)") }
         defer { ClipCompositor.trace = nil }
 
-        func composition(_ change: (AVMutableVideoComposition) -> Void) -> AVVideoComposition {
-            let copy = built.videoComposition.mutableCopy() as! AVMutableVideoComposition
-            change(copy)
-            return copy
-        }
-        let original = try #require(built.videoComposition.instructions.first as? ClipInstruction)
-        let trackIDs = (original.requiredSourceTrackIDs ?? []).compactMap { ($0 as? NSNumber)?.int32Value }
-        let withoutCarrier = try #require(built.composition.mutableCopy() as? AVMutableComposition)
-        if let carrierID = trackIDs.first, let carrier = withoutCarrier.track(withTrackID: carrierID) {
-            withoutCarrier.removeTrack(carrier)
-        }
+        // The colour properties, the compositor's buffers and colour handling and the carrier
+        // track were each ruled out on the iPhone Duo simulator (see DECISIONS.md, §8b).
         let variants: [(String, AVAsset, AVVideoComposition?)] = [
             ("tracks only", built.composition, nil),
-            ("as built", built.composition, built.videoComposition),
-            ("without colour properties", built.composition, composition {
-                $0.colorPrimaries = nil
-                $0.colorTransferFunction = nil
-                $0.colorYCbCrMatrix = nil
-            }),
-            ("wide-colour compositor", built.composition, composition { $0.customVideoCompositorClass = WideColourCompositor.self }),
-            ("plain-buffer compositor", built.composition, composition { $0.customVideoCompositorClass = PlainBufferCompositor.self }),
-            ("without the carrier track", withoutCarrier, composition {
-                $0.instructions = [ClipInstruction(timeRange: original.timeRange, trackIDs: Array(trackIDs.dropFirst()), renderer: original.renderer)]
-            }),
-            ("any render format", built.composition, composition { $0.customVideoCompositorClass = AnyFormatCompositor.self }),
-            ("no buffer requirements", built.composition, composition { $0.customVideoCompositorClass = NoRequirementsCompositor.self }),
-            ("HDR compositor", built.composition, composition { $0.customVideoCompositorClass = HDRCompositor.self }),
             ("system compositor", built.composition, try await AVMutableVideoComposition.videoComposition(withPropertiesOf: built.composition)),
+            ("as built", built.composition, built.videoComposition),
         ]
+
+        // Frames pulled from the player instead of shown by a player layer.
+        let item = built.makePlayerItem()
+        let videoOutput = PreviewSession.makeFrameOutput()
+        item.add(videoOutput)
+        let pulling = AVPlayer(playerItem: item)
+        await PreviewSession.waitUntilReady(item)
+        pulling.play()
+        var frames = 0
+        for _ in 0..<40 {
+            try await Task.sleep(for: .milliseconds(50))
+            let time = videoOutput.itemTime(forHostTime: CACurrentMediaTime())
+            if videoOutput.hasNewPixelBuffer(forItemTime: time),
+               videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) != nil {
+                frames += 1
+            }
+        }
+        let pulled = item.status == .readyToPlay && frames > 5
+        print("playback with pulled frames: \(pulled ? "plays" : "fails") – \(frames) frames, \(FoldTransitionTests.describe(pulling))")
+        pulling.pause()
 
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -173,28 +207,6 @@ struct PlaybackTests {
             _ = await Self.playsOnScreen(player, "variant \(name)")
             layer.removeFromSuperlayer()
         }
-
-        // Frames pulled from the player instead of shown by a player layer.
-        let item = built.makePlayerItem()
-        let videoOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-        ])
-        item.add(videoOutput)
-        let player = AVPlayer(playerItem: item)
-        await PreviewSession.waitUntilReady(item)
-        player.play()
-        var frames = 0
-        for _ in 0..<40 {
-            try await Task.sleep(for: .milliseconds(50))
-            let time = videoOutput.itemTime(forHostTime: CACurrentMediaTime())
-            if videoOutput.hasNewPixelBuffer(forItemTime: time),
-               videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) != nil {
-                frames += 1
-            }
-        }
-        let pulled = item.status == .readyToPlay && frames > 5
-        print("playback on screen variant video output: \(pulled ? "plays" : "fails") – \(frames) frames, \(FoldTransitionTests.describe(player))")
-        player.pause()
     }
 
     static func playsOnScreen(_ player: AVPlayer, _ name: String) async -> Bool {
@@ -223,9 +235,9 @@ struct PlaybackTests {
 }
 
 /// Whether this simulator can show video on screen at all: a plain test video in a plain player
-/// layer. The iPhone Duo simulator on the Xcode 27.1 runner fails this (AVFoundation -12784)
-/// while it plays the same video without a view, so the preview's own on-screen checks there
-/// are known issues of the simulator, not of the app.
+/// layer. Where not even that shows, the on-screen checks are known issues of the simulator, not
+/// of the app. (The iPhone Duo simulator with iOS 27.1 shows it; there only the app's compositor
+/// cannot be shown in a player layer.)
 @MainActor
 enum DisplayCheck {
     private static var result: Bool?
@@ -253,40 +265,3 @@ enum DisplayCheck {
         return shows
     }
 }
-
-/// Compositor variants for variantsOfTheFilmOnScreen.
-final class WideColourCompositor: ClipCompositor {
-    @objc var supportsWideColorSourceFrames: Bool { true }
-    @objc var canConformColorOfSourceFrames: Bool { true }
-}
-
-final class PlainBufferCompositor: ClipCompositor {
-    override var sourcePixelBufferAttributes: [String: any Sendable]? {
-        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-    }
-
-    override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
-        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-    }
-}
-
-final class AnyFormatCompositor: ClipCompositor {
-    override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
-        [
-            kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
-            kCVPixelBufferMetalCompatibilityKey as String: true,
-        ]
-    }
-}
-
-final class NoRequirementsCompositor: ClipCompositor {
-    override var sourcePixelBufferAttributes: [String: any Sendable]? { nil }
-    override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { [:] }
-}
-
-final class HDRCompositor: ClipCompositor {
-    @objc var supportsHDRSourceFrames: Bool { true }
-    @objc var supportsWideColorSourceFrames: Bool { true }
-    @objc var canConformColorOfSourceFrames: Bool { true }
-}
-

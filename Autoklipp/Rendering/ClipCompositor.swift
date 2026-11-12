@@ -19,9 +19,8 @@ final class ClipInstruction: NSObject, AVVideoCompositionInstructionProtocol, @u
     }
 }
 
-/// Custom compositor: every output frame is drawn by `FrameRenderer` with Core Image. Not final,
-/// so that tests can try variants of what it asks of AVFoundation.
-class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
+/// Custom compositor: every output frame is drawn by `FrameRenderer` with Core Image.
+final class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     enum CompositorError: Error {
         case missingInstruction
         case noOutputBuffer
@@ -36,8 +35,9 @@ class ClipCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     /// Set on the compositor's queue once the first frame is drawn.
     private var drewFirstFrame = false
 
-    /// Receives a line for each new render context, the first frame and every failed request;
-    /// tests set it to find out why a player refuses a film. Nil, and silent, in the app.
+    /// Receives a line for each new render context, the first frame and every failed request,
+    /// and when the preview falls back to drawing the film itself; tests set it to find out why a
+    /// player refuses a film. Nil, and silent, in the app.
     nonisolated(unsafe) static var trace: ((String) -> Void)?
 
     /// Buffers shared with the GPU (IOSurface, Metal), so Core Image reads and writes them in
