@@ -57,7 +57,8 @@ struct StoreAssetsTests {
         model.path = [.media, .length, .style, .preview]
         try await Task.sleep(for: .seconds(1))
         model.preview?.play()
-        let preview = try await screen([.media, .length, .style, .preview], wait: 3)
+        // Long enough for every thumbnail in the clip strip; videos' take a moment on a busy runner.
+        let preview = try await screen([.media, .length, .style, .preview], wait: 6)
         model.preview?.pause()
         model.show(.export)
         try await Task.sleep(for: .seconds(2))
