@@ -68,6 +68,9 @@ final class ImportProgress {
 
 /// Copies picked items into the project and reads their metadata. Broken items are skipped.
 enum MediaImporter {
+    /// Receives why an item could not be imported (tests print it).
+    nonisolated(unsafe) static var trace: ((String) -> Void)?
+
     struct Result: Sendable {
         /// One entry per picked item, in the same order; nil where the item could not be used.
         var items: [ImportedMedia?]
@@ -96,10 +99,15 @@ enum MediaImporter {
                 let item = items[index]
                 next += 1
                 group.addTask {
-                    let imported = try? await importOne(item, storage: storage) { fraction in
-                        Task { @MainActor in progress.report(fraction, for: index) }
+                    do {
+                        let imported = try await importOne(item, storage: storage) { fraction in
+                            Task { @MainActor in progress.report(fraction, for: index) }
+                        }
+                        return (index, imported)
+                    } catch {
+                        MediaImporter.trace?("item \(index) (\(item.itemIdentifier ?? "no identifier")) not imported: \(error)")
+                        return (index, nil)
                     }
-                    return (index, imported)
                 }
             }
             enqueue()

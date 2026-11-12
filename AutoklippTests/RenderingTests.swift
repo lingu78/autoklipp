@@ -170,27 +170,41 @@ struct RenderingTests {
         let folder = try TestMedia.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
         let built = try await twoWholeVideos(in: folder)
+        let tracks = try await built.composition.loadTracks(withMediaType: .video)
 
-        let reader = try AVAssetReader(asset: built.composition)
-        let output = AVAssetReaderVideoCompositionOutput(
-            videoTracks: try await built.composition.loadTracks(withMediaType: .video),
-            videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-        )
-        output.videoComposition = built.videoComposition
-        reader.add(output)
-        reader.startReading()
-        var alone: [Double] = []
-        var blended: [(time: Double, brightness: Double)] = []
-        while let sample = output.copyNextSampleBuffer() {
-            let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-            // The crossfade runs from 2.5 to 3.5 s; each clip shows alone at 1 and 5 s.
-            let inTransition = time > 2.5 && time < 3.5
-            let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
-            guard inTransition || isAlone, let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-            let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
-            if inTransition { blended.append((time, brightness)) } else { alone.append(brightness) }
+        // Copying a frame blocks until it is rendered, so the frames are read on a queue rather
+        // than on one of the threads Swift's concurrency shares with the tests running alongside.
+        typealias Frames = (status: AVAssetReader.Status, alone: [Double], blended: [(time: Double, brightness: Double)])
+        let read: Frames = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var alone: [Double] = []
+                var blended: [(time: Double, brightness: Double)] = []
+                guard let reader = try? AVAssetReader(asset: built.composition) else {
+                    continuation.resume(returning: (status: .failed, alone: alone, blended: blended))
+                    return
+                }
+                let output = AVAssetReaderVideoCompositionOutput(
+                    videoTracks: tracks,
+                    videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                )
+                output.videoComposition = built.videoComposition
+                reader.add(output)
+                reader.startReading()
+                while let sample = output.copyNextSampleBuffer() {
+                    let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                    // The crossfade runs from 2.5 to 3.5 s; each clip shows alone at 1 and 5 s.
+                    let inTransition = time > 2.5 && time < 3.5
+                    let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
+                    guard inTransition || isAlone, let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+                    let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
+                    if inTransition { blended.append((time, brightness)) } else { alone.append(brightness) }
+                }
+                continuation.resume(returning: (status: reader.status, alone: alone, blended: blended))
+            }
         }
-        #expect(reader.status == .completed)
+        let alone = read.alone
+        let blended = read.blended
+        #expect(read.status == .completed)
         #expect(alone.count == 2)
         #expect(blended.count >= 25)
         let darkest = try #require(alone.min())

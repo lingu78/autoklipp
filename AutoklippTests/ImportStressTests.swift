@@ -24,11 +24,27 @@ struct ImportStressTests {
         let identifiers = try await Self.addToLibrary(photos: 14, videos: 6)
         #expect(identifiers.count == 20)
         let items = identifiers.map { PhotosPickerItem(itemIdentifier: $0) }
+        MediaImporter.trace = { print("import stress: \($0)") }
+        defer { MediaImporter.trace = nil }
 
         let model = AppModel(inMemory: true)
         try model.draft.storage.prepare()
         let storage = model.draft.storage
         defer { storage.removeAll() }
+
+        // First, slowly: whether this simulator loads items made from library identifiers at all.
+        let control = try await Self.addToLibrary(photos: 1, videos: 1)
+        var controlLoaded = 0
+        for identifier in control {
+            do {
+                let media = try await MediaImporter.importOne(PhotosPickerItem(itemIdentifier: identifier), storage: storage) { _ in }
+                controlLoaded += 1
+                try? FileManager.default.removeItem(at: media.url)
+            } catch {
+                print("import stress: control item not loaded: \(error)")
+            }
+        }
+        print("import stress: \(controlLoaded) of \(control.count) items loaded one at a time")
         model.path = [.media]
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -67,10 +83,15 @@ struct ImportStressTests {
             waited += 1
         }
         let media = model.draft.media
-        print("import stress: \(media.count) imported of \(chosen.count) picked, \(model.draft.skippedCount) skipped, waited \(Double(waited) / 5) s")
+        print(
+            "import stress: \(media.count) imported of \(chosen.count) picked "
+                + "(\(model.imports.selection.count) in the selection), \(model.draft.skippedCount) skipped, "
+                + "waited \(Double(waited) / 5) s"
+        )
         #expect(!model.imports.isBusy)
-        if media.isEmpty, model.draft.skippedCount == chosen.count {
-            // Items made from identifiers, not handed over by the picker, may not load here; the
+        #expect(model.imports.selection == chosen)
+        if controlLoaded == 0 {
+            // Items made from identifiers, not handed over by the picker, do not load here; the
             // quick picking itself still ran without crashing.
             withKnownIssue("This simulator does not load picker items made from library identifiers") {
                 #expect(model.draft.skippedCount == 0)

@@ -156,23 +156,32 @@ final class MediaImportSession {
     }
 
     /// Takes a new selection from the picker. The embedded picker reports every tap, so the
-    /// import waits a moment for the next one instead of starting over for each.
+    /// import waits a moment for the next one instead of starting for each. Taps during an
+    /// import are taken up when it is done: a load is never stopped halfway, since quick taps
+    /// that stopped loads left those items failing to load when they were picked again.
     func select(_ items: [PhotosPickerItem]) {
         guard items != selection else { return }
         selection = items
-        let previous = task
-        previous?.cancel()
+        isBusy = true
+        guard task == nil else { return }
         run += 1
         let current = run
-        isBusy = true
         task = Task {
-            defer { if self.run == current { self.isBusy = false } }
-            // One import at a time: the one replaced stops before this one starts, so an item is
-            // never loaded twice at once, which quick taps in the picker used to do.
-            await previous?.value
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            await self.sync(with: items)
+            defer {
+                if self.run == current {
+                    self.task = nil
+                    self.isBusy = false
+                }
+            }
+            var imported: [PhotosPickerItem]?
+            while imported != self.selection {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                let items = self.selection
+                await self.sync(with: items)
+                guard !Task.isCancelled else { return }
+                imported = items
+            }
         }
     }
 
@@ -216,12 +225,20 @@ final class MediaImportSession {
         self.progress = progress
         let result = await MediaImporter.importItems(fresh.map(\.0), storage: draft.storage, progress: progress)
         guard !Task.isCancelled else { return }
-        for ((_, identifier), media) in zip(fresh, result.items) {
+        // Items unpicked while they loaded are set aside, ready if they are picked again; the
+        // next round of the import then works from the selection as it is now.
+        let pickedNow = Set(selection.compactMap(\.itemIdentifier))
+        for ((item, identifier), media) in zip(fresh, result.items) {
+            let stillPicked = item.itemIdentifier.map(pickedNow.contains) ?? true
             guard let media else {
-                failedIdentifiers.insert(identifier)
+                if stillPicked { failedIdentifiers.insert(identifier) }
                 continue
             }
             failedIdentifiers.remove(identifier)
+            guard stillPicked else {
+                setAside[identifier] = media
+                continue
+            }
             importedIdentifiers[identifier] = media.id
             if !draft.media.contains(where: { $0.id == media.id }) { draft.media.append(media) }
         }

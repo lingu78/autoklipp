@@ -76,7 +76,7 @@ struct StoreAssetsTests {
 
         // The screenshots, with a caption over each.
         let slides: [(String, String, String, UIImage)] = [
-            ("1-film", "Your photos and videos, cut to the beat", "A finished film with music and transitions, made on your iPhone.", preview),
+            ("1-film", "Your photos, cut to the beat", "A finished film with music and transitions, made on your iPhone.", preview),
             ("2-style", "Pick a style and a song", "Calm, Energetic, Nostalgic, Travel or Cinematic – with music made for each.", style),
             ("3-length", "Any length you like", "From 15 seconds to 10 minutes.", length),
             ("4-making", "The best moments, picked for you", "Sharp shots, faces and steady video, on the beat.", making),
