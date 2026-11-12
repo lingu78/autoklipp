@@ -179,12 +179,16 @@ struct FlowActionPanel: View {
                     .font(.headline)
             }
             .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
             .disabled(action.isDisabled)
         } else {
             Button(role: action.kind == .cancel ? .cancel : nil, action: action.perform) {
                 label(action)
             }
             .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
             .disabled(action.isDisabled)
         }
     }
@@ -192,7 +196,8 @@ struct FlowActionPanel: View {
     private func label(_ action: FlowAction) -> some View {
         Label(action.title, systemImage: action.systemImage)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
     }
 }
 

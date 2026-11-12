@@ -8,6 +8,7 @@ struct HomeView: View {
     @Query(sort: \SavedProject.updatedAt, order: .reverse) private var projects: [SavedProject]
     @State private var appeared = false
     @State private var projectToDelete: SavedProject?
+    @State private var newFilmTaps = 0
 
     var body: some View {
         ScrollView {
@@ -63,6 +64,7 @@ struct HomeView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
+                newFilmTaps += 1
                 model.newProject()
             } label: {
                 Label("New film", systemImage: "plus")
@@ -74,6 +76,7 @@ struct HomeView: View {
                     .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
             }
             .buttonStyle(PressScale())
+            .sensoryFeedback(.impact(weight: .medium), trigger: newFilmTaps)
             .padding(.top, 10)
         }
         .foregroundStyle(.white)
@@ -82,10 +85,12 @@ struct HomeView: View {
         .padding(.top, 36)
         .padding(.bottom, 64)
         .frame(maxWidth: .infinity)
-        // Reaches up under the status bar and into the pull-down overscroll.
+        // Reaches up under the status bar and into the pull-down overscroll, and out to the
+        // display's edges, also under bars the system puts on the side.
         .background(alignment: .bottom) {
             HeroBackground(animated: !reduceMotion)
                 .padding(.top, -400)
+                .ignoresSafeArea(edges: .horizontal)
         }
     }
 
@@ -109,10 +114,12 @@ struct HomeView: View {
         .padding(.top, 28)
         .padding(.bottom, 40)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Color(uiColor: .systemBackground),
-            in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
-        )
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+                .padding(.bottom, -400)
+                .ignoresSafeArea(edges: [.horizontal, .bottom])
+        }
     }
 
     private var films: some View {
@@ -130,6 +137,12 @@ struct HomeView: View {
                             ProjectCard(project: project)
                         }
                         .buttonStyle(PressScale())
+                        // Cards ease in and out at the edges of the row.
+                        .scrollTransition(.interactive, axis: .horizontal) { card, phase in
+                            card
+                                .scaleEffect(phase.isIdentity ? 1 : 0.93)
+                                .opacity(phase.isIdentity ? 1 : 0.75)
+                        }
                         .contextMenu {
                             Button(role: .destructive) {
                                 projectToDelete = project
@@ -142,8 +155,11 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 4)
+                .scrollTargetLayout()
             }
             .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollClipDisabled()
         }
     }
 
@@ -172,85 +188,6 @@ struct HomeView: View {
     }
 }
 
-/// Colours of the app icon's gradient.
-private enum Brand {
-    static let orange = Color(red: 238 / 255, green: 110 / 255, blue: 64 / 255)
-    static let coral = Color(red: 232 / 255, green: 82 / 255, blue: 82 / 255)
-    static let raspberry = Color(red: 214 / 255, green: 54 / 255, blue: 107 / 255)
-    static let deep = Color(red: 176 / 255, green: 32 / 255, blue: 100 / 255)
-    static let plum = Color(red: 128 / 255, green: 24 / 255, blue: 90 / 255)
-}
-
-/// The icon's mark: three stacked frames with a play symbol. `spread` fans the frames out
-/// from a single stack (0) to the icon's layout (1).
-private struct AutoklippMark: View {
-    let size: CGFloat
-    let spread: CGFloat
-
-    var body: some View {
-        ZStack {
-            frame(opacity: 0.3, step: 2)
-            frame(opacity: 0.55, step: 1)
-            frame(opacity: 1, step: 0)
-                .overlay {
-                    PlayTriangle()
-                        .fill(Brand.raspberry)
-                        .frame(width: size * 0.166, height: size * 0.186)
-                        .offset(x: size * (-0.051 + 0.015), y: size * 0.076)
-                }
-                .shadow(color: .black.opacity(0.18), radius: size * 0.03, y: size * 0.015)
-        }
-        .frame(width: size, height: size)
-    }
-
-    /// As in the icon: the front frame sits left of and below the centre, and each frame
-    /// behind it is a step up and to the right.
-    private func frame(opacity: Double, step: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: size * 0.047, style: .continuous)
-            .fill(.white.opacity(opacity))
-            .frame(width: size * 0.508, height: size * 0.352)
-            .offset(x: size * (-0.051 + 0.049 * step * spread), y: size * (0.076 - 0.078 * step * spread))
-    }
-}
-
-private struct PlayTriangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// The icon's warm gradient, drifting slowly unless motion is reduced.
-private struct HeroBackground: View {
-    let animated: Bool
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animated)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            let dx = Float(animated ? 0.12 * sin(time * 0.35) : 0)
-            let dy = Float(animated ? 0.08 * cos(time * 0.27) : 0)
-            MeshGradient(
-                width: 3,
-                height: 3,
-                points: [
-                    [0, 0], [0.5, 0], [1, 0],
-                    [0, 0.5], [0.5 + dx, 0.5 + dy], [1, 0.5],
-                    [0, 1], [0.5, 1], [1, 1],
-                ],
-                colors: [
-                    Brand.orange, Brand.orange, Brand.coral,
-                    Brand.coral, Brand.raspberry, Brand.deep,
-                    Brand.raspberry, Brand.deep, Brand.plum,
-                ]
-            )
-        }
-    }
-}
-
 private struct ProjectCard: View {
     let project: SavedProject
 
@@ -258,7 +195,7 @@ private struct ProjectCard: View {
         let updated = project.updatedAt.formatted(.relative(presentation: .named))
         VStack(alignment: .leading, spacing: 8) {
             Color(uiColor: .secondarySystemBackground)
-                .frame(width: 150, height: 190)
+                .frame(width: 168, height: 220)
                 .overlay {
                     if let data = project.thumbnail, let image = UIImage(data: data) {
                         Image(uiImage: image).resizable().scaledToFill()
@@ -275,7 +212,8 @@ private struct ProjectCard: View {
                         .background(.black.opacity(0.55), in: .capsule)
                         .padding(8)
                 }
-                .clipShape(.rect(cornerRadius: 16, style: .continuous))
+                .clipShape(.rect(cornerRadius: 20, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 5)
             Text(project.title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
@@ -285,7 +223,7 @@ private struct ProjectCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 150, alignment: .leading)
+        .frame(width: 168, alignment: .leading)
         .contentShape(.rect)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: "\(project.title), \(Formatting.duration(project.duration)), \(updated)"))
@@ -318,14 +256,5 @@ private struct StepRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-/// Shrinks a little while pressed.
-private struct PressScale: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
     }
 }

@@ -7,18 +7,20 @@ struct PreviewView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(spacing: 12) {
+        Group {
             if let session = model.preview {
                 FilmPlayerSection(session: session)
             } else {
-                Spacer()
                 ProgressView()
                     .controlSize(.large)
-                Spacer()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.top)
+        .padding(.vertical, 8)
+        // The film fills the screen on a dark stage that reaches every edge; sheets opened from
+        // here keep the app's own appearance.
+        .background { FilmStage() }
+        .toolbarColorScheme(.dark, for: .navigationBar, .bottomBar)
         .navigationTitle(model.draft.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -27,6 +29,8 @@ struct PreviewView: View {
             }
         }
         .flowActions(actions)
+        // Dark, with the buttons under the film; the sheets below keep the app's appearance.
+        .environment(\.colorScheme, .dark)
         .task { await model.preparePreview() }
         // Only the model closes a sheet (its buttons, or a step chosen on a large display). The
         // sheet also goes away when the layout changes, and must stay open in the model then.
@@ -82,11 +86,11 @@ struct FilmPlayerSection: View {
             film
                 .aspectRatio(aspectRatio, contentMode: .fit)
                 .background(.black)
-                .clipShape(.rect(cornerRadius: 12))
-                // Centred; the black stays inside the film's own shape.
-                .frame(maxWidth: .infinity)
+                .clipShape(.rect(cornerRadius: 14, style: .continuous))
+                // As large as the space allows, centred: the film is what this screen is for.
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .task(id: ObjectIdentifier(session)) { await followPlayback(session) }
-                .padding(.horizontal)
+                .padding(.horizontal, 8)
 
             ForEach(Array(session.edl.notices.enumerated()), id: \.offset) { entry in
                 noticeView(entry.element)
@@ -118,8 +122,11 @@ struct FilmPlayerSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
                 .padding(.horizontal)
         }
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: session.edl.clips.map { "\($0.id)\($0.isLocked)" })
     }
 
     /// The system's player, or the frames the app draws where the system cannot show the film.
@@ -239,6 +246,7 @@ struct ChangeSheet<Content: View>: View {
     var body: some View {
         NavigationStack {
             List { content() }
+                .scrollDismissesKeyboard(.interactively)
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -264,21 +272,34 @@ struct ChangeSheet<Content: View>: View {
 /// so it is still there when the sheet comes back in the other layout.
 struct TextsSheet: View {
     @Environment(AppModel.self) private var model
+    @FocusState private var field: Field?
+
+    private enum Field {
+        case title, endCredit
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("Title", text: text(\.title))
+                        .focused($field, equals: .title)
+                        .submitLabel(.next)
+                        .onSubmit { field = .endCredit }
                 } footer: {
                     Text("Shown over the first seconds of the film.")
                 }
                 Section {
                     TextField("End credit", text: text(\.endCredit))
+                        .focused($field, equals: .endCredit)
+                        .submitLabel(.done)
+                        .onSubmit { field = nil }
                 } footer: {
                     Text("Shown over the last seconds of the film.")
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .onAppear { field = .title }
             .navigationTitle("Title and credits")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

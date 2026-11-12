@@ -36,6 +36,12 @@ struct RootView: View {
         .onChange(of: horizontalSizeClass) { _, _ in
             AppDelegate.refreshOrientations()
         }
+        // The rounded system font throughout, as on the start screen.
+        .fontDesign(.rounded)
+        // A tap from the phone when a film is ready to watch.
+        .sensoryFeedback(trigger: model.preview.map { ObjectIdentifier($0) }) { _, film in
+            film == nil ? nil : .success
+        }
     }
 }
 

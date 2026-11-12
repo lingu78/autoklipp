@@ -59,6 +59,7 @@ struct WorkspaceView: View {
 /// with its clip strip, or the picked media until there is a film.
 private struct WorkspaceStage: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -66,10 +67,13 @@ private struct WorkspaceStage: View {
                 MediaLibraryPicker()
             } else if let job = model.generation {
                 GenerationProgressView(job: job)
-                    .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background {
+                        HeroBackground(animated: !reduceMotion)
+                            .ignoresSafeArea()
+                    }
             } else if model.hasFilm {
-                VStack(spacing: 12) {
+                Group {
                     if let session = model.preview {
                         FilmPlayerSection(session: session, isBusy: model.export?.isExporting == true)
                     } else {
@@ -77,9 +81,11 @@ private struct WorkspaceStage: View {
                             .controlSize(.large)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    Spacer(minLength: 0)
                 }
-                .padding(.top)
+                .padding(.vertical, 12)
+                // The film on a dark stage, as on the phone.
+                .background { FilmStage() }
+                .environment(\.colorScheme, .dark)
                 .task { await model.preparePreview() }
             } else {
                 SelectedMediaMosaic(draft: model.draft)
@@ -87,29 +93,6 @@ private struct WorkspaceStage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemBackground))
-    }
-}
-
-/// The photo library itself, embedded: a large grid where every tap picks or unpicks.
-private struct MediaLibraryPicker: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        PhotosPicker(
-            selection: model.imports.selectionBinding,
-            maxSelectionCount: MediaImportSession.maximumCount,
-            selectionBehavior: .continuousAndOrdered,
-            matching: MediaImportSession.filter,
-            preferredItemEncoding: .current,
-            photoLibrary: .shared()
-        ) {
-            Text("Choose photos and videos")
-        }
-        .photosPickerStyle(.inline)
-        .photosPickerDisabledCapabilities(.selectionActions)
-        // An edit in the clip strip saves the project when it finishes; the media must not
-        // change under it.
-        .disabled(model.isEditing)
     }
 }
 
@@ -160,6 +143,7 @@ private struct StepPanel: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: model.activeStep) { _, step in
                 guard let step else { return }
                 withAnimation { proxy.scrollTo(step, anchor: .top) }
@@ -183,7 +167,7 @@ private struct StepHeader: View {
                     .font(.body.weight(.semibold))
                     .foregroundStyle(active ? Color.white : Color.accentColor)
                     .frame(width: 34, height: 34)
-                    .background(active ? Color.accentColor : Color.accentColor.opacity(0.12), in: .circle)
+                    .background(active ? AnyShapeStyle(Brand.diagonal) : AnyShapeStyle(Color.accentColor.opacity(0.12)), in: .circle)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(step.title)
@@ -384,6 +368,8 @@ private struct StepContent: View {
                 .padding(.vertical, 4)
         }
         .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
         .disabled(disabled)
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets())

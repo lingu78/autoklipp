@@ -68,6 +68,79 @@ struct ScreenshotTests {
         }
     }
 
+    /// Every step of making a film, on this simulator's screen: the length, style, the film,
+    /// its export, the making of a new version and the photo library.
+    @Test(.timeLimit(.minutes(10)))
+    func flowTour() async throws {
+        guard let path = ProcessInfo.processInfo.environment["AUTOKLIPP_SCREENSHOTS"], !path.isEmpty else { return }
+        let folder = URL(filePath: path, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let model = try await AdjustmentTests().preparedModel()
+        let storage = model.draft.storage
+        defer { storage.removeAll() }
+
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(origin: .zero, size: scene.screen.bounds.size)
+        window.rootViewController = UIHostingController(
+            rootView: RootView()
+                .environment(model)
+                .modelContainer(model.container)
+        )
+        window.makeKeyAndVisible()
+        defer {
+            model.preview?.pause()
+            model.closePreview()
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+
+        func shoot(_ name: String) async throws {
+            try await Task.sleep(for: .seconds(2))
+            try Self.capture(window, name: name, folder: folder)
+        }
+        model.path = [.media, .length]
+        try await shoot("tour-length")
+        model.path = [.media, .length, .style]
+        try await shoot("tour-style")
+        model.path = [.media, .length, .style, .preview]
+        try await shoot("tour-preview")
+        model.show(.export)
+        try await shoot("tour-export")
+        model.closeExport()
+        model.preview?.pause()
+
+        // A new version, shown while it is made.
+        model.draft.analyses = [:]
+        model.createFilm(newVersion: true)
+        try await Task.sleep(for: .milliseconds(600))
+        try Self.capture(window, name: "tour-generating", folder: folder)
+        var waited = 0
+        while model.generation != nil, waited < 600 {
+            try await Task.sleep(for: .milliseconds(200))
+            waited += 1
+        }
+        model.preview?.pause()
+        model.path = [.media]
+        try await shoot("tour-media")
+    }
+
+    /// Saved as a PNG and logged as small base64 lines.
+    static func capture(_ window: UIWindow, name: String, folder: URL) throws {
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        try image.pngData()?.write(to: folder.appending(path: "\(name).png"))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let small = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            image.draw(in: window.bounds)
+        }
+        if let jpeg = small.jpegData(compressionQuality: 0.6) {
+            log(name: name, jpeg: jpeg)
+        }
+    }
+
     enum Look {
         case sunset, sea, mountains
     }

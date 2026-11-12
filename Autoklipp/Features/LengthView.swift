@@ -25,8 +25,24 @@ struct LengthOptions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("How long should the film be?")
-                .font(.title2.bold())
+            // The length chosen, large: what the whole step is about.
+            VStack(spacing: 4) {
+                Text(Formatting.clock(draft.targetDuration))
+                    .font(.system(size: 76, weight: .bold, design: .rounded).monospacedDigit())
+                    .contentTransition(.numericText(value: draft.targetDuration))
+                    .foregroundStyle(Brand.diagonal)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text("How long should the film be?")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("How long should the film be?"))
+            .accessibilityValue(Text(Formatting.duration(draft.targetDuration)))
+            .animation(.snappy, value: draft.targetDuration)
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
                 choiceButton(.auto, title: Text("Auto"), detail: Text(Formatting.duration(AutoLength.suggest(for: draft.mediaItems))))
@@ -65,27 +81,39 @@ struct LengthOptions: View {
         .onAppear {
             if case let .custom(seconds) = draft.lengthChoice { customSeconds = seconds }
         }
+        // A tick for each choice; the custom slider moves in steps of its own.
+        .sensoryFeedback(.selection, trigger: chosenButton)
+    }
+
+    /// The choice button that is on, if any.
+    private var chosenButton: LengthChoice? {
+        if case .custom = draft.lengthChoice { return nil }
+        return draft.lengthChoice
     }
 
     private func choiceButton(_ choice: LengthChoice, title: Text, detail: Text?) -> some View {
         let selected = draft.lengthChoice == choice
         return Button {
-            draft.lengthChoice = choice
+            withAnimation(.snappy) { draft.lengthChoice = choice }
         } label: {
             VStack(spacing: 2) {
                 title.font(.headline)
                 if let detail {
                     detail.font(.caption)
+                        .opacity(0.85)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .foregroundStyle(selected ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(selected ? AnyShapeStyle(Brand.diagonal) : AnyShapeStyle(Color(uiColor: .secondarySystemFill)))
+            }
+            .shadow(color: Brand.deep.opacity(selected ? 0.3 : 0), radius: 8, y: 4)
+            .scaleEffect(selected ? 1.03 : 1)
+            .contentShape(.rect)
         }
-        .buttonStyle(.bordered)
-        .tint(selected ? .accentColor : .secondary)
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2)
-        }
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .buttonStyle(PressScale())
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }

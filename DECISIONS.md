@@ -466,6 +466,48 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
   Systemfönster som filväljaren för egen låt och delningsmenyn stängs också vid vikning.
 - Förlyssning av låtar i musikvalet stannar vid vikning; den är en kort provlyssning, inte filmen.
 
+## 8c. Design och känsla (2026-11-12)
+
+Mål: appen ska använda hela skärmen och kännas mer påkostad, med Toastie (ett spel för iPhone Duo
+som hyllas för sin taktila känsla, sina ljud och sin haptik) som riktmärke för känslan – inte för
+utseendet, som är appens eget. Allt med Apples ramverk.
+
+**Ändrade och nya vyer**
+
+| Fil | Ändring |
+| --- | --- |
+| `Support/Design.swift` (ny) | Ikonens färger (`Brand`), märket, den drivande färgtoningen, tryckeffekten och den mörka filmscenen (`FilmStage`), delade av alla skärmar. |
+| `App/RootView.swift` | Rundad systemtypsnitt i hela appen; en haptisk bekräftelse när en film är klar att se. |
+| `Features/HomeView.swift` | Färgfältet och innehållsytan når skärmens kanter, även under sidofält; större filmkort som snäpper och tonar vid kanterna. |
+| `Features/MediaSelectionView.swift` | Bildbiblioteket inbäddat och fyller skärmen, som på innerskärmen; antal valda överst. |
+| `Features/LengthView.swift` | Den valda längden stort; valen som mjuka knappar med en haptisk tick. |
+| `Features/StyleView.swift` | Stilarna som kort i stilens egna färger; tangentbordet går att stänga (se nedan). |
+| `Features/GenerateView.swift` | Genereringen över den drivande färgtoningen, med märket som andas och stegen i vitt. |
+| `Features/PreviewView.swift` | Filmen så stor som ytan tillåter på en mörk scen till skärmkanterna; haptik vid ändringar i klippremsan; titelarkets fält med Nästa/Klar. |
+| `Features/WorkspaceView.swift` | Filmkolumnen på mörk scen och genereringen över färgtoningen även på innerskärmen. |
+| `Features/ExportView.swift` | Formaten som små ramar i rätt proportioner, stora knappar, procent under exporten och haptik när filmen är klar och sparad. |
+| `Support/SideBars.swift` | Stegens knappar som stora kapslar. |
+
+**Beslut**
+
+- **Bakgrunder når skärmens kanter, innehåll håller sig inom det säkra området.** På iPhone Duos
+  ytterskärm ligger systemets sidofält vid kanten; färgfält och filmscen fortsätter under det i
+  stället för att lämna en vit remsa. (2026-11-12)
+- **Filmen visas på en mörk scen** (svart, mörkt utseende för filmen, klippremsan och knapparna
+  under den). Ark som öppnas därifrån behåller appens vanliga utseende. (2026-11-12)
+- **Bildbiblioteket inbäddat även på telefonen**: ett tryck mindre och hela skärmen till bilderna.
+  Samma importsession som på innerskärmen, med väntan på nästa tryck innan importen startar. (2026-11-12)
+- **Haptik med `sensoryFeedback`**: tick vid val av längd, stil, musik och format, mjuk stöt vid
+  ändringar i klippremsan, bekräftelse när en film är klar, när exporten är klar och när den är
+  sparad. Inga egna ljud: appen spelar redan musik, och systemets ljud följer telefonens inställningar. (2026-11-12)
+- **Tangentbordet:** beskrivningen till Apple Intelligence är en eller två meningar, så Retur
+  (märkt Klar) avslutar den och stänger tangentbordet i stället för att börja en ny rad.
+  Tangentbordet har också en Klar-knapp, och det stängs när man drar i listan. I titelarket går
+  Retur från titeln till eftertexten och stänger sedan tangentbordet. Förut låg tangentbordet kvar
+  tills filmen skapades. (2026-11-12)
+- **Skärmbilder:** `ScreenshotTests.flowTour` visar längd, stil, film, export, generering och
+  bibliotek på varje simulators skärm och loggar dem i CI. (2026-11-12)
+
 ## 9. Öppna frågor (från SPEC.md)
 
 | Fråga                                   | Status                                                                 |

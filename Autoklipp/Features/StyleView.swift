@@ -33,6 +33,18 @@ extension StyleID {
         case .cinematic: "film"
         }
     }
+
+    /// The style's card: colours that say what the style does, dark enough for white text.
+    var gradient: LinearGradient {
+        let colors: [Color] = switch self {
+        case .calm: [Color(red: 0.30, green: 0.60, blue: 0.58), Color(red: 0.13, green: 0.36, blue: 0.43)]
+        case .energetic: [Color(red: 0.96, green: 0.45, blue: 0.16), Color(red: 0.80, green: 0.10, blue: 0.30)]
+        case .nostalgic: [Color(red: 0.70, green: 0.50, blue: 0.32), Color(red: 0.42, green: 0.26, blue: 0.20)]
+        case .travel: [Color(red: 0.20, green: 0.56, blue: 0.92), Color(red: 0.13, green: 0.30, blue: 0.72)]
+        case .cinematic: [Color(red: 0.24, green: 0.28, blue: 0.38), Color(red: 0.04, green: 0.05, blue: 0.09)]
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
 }
 
 /// Step 3: choose a style and a song.
@@ -43,6 +55,7 @@ struct StyleView: View {
         List {
             StyleSections(draft: model.draft, describing: model.directorAvailable)
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Style and music")
         .navigationBarTitleDisplayMode(.inline)
         .flowActions([
@@ -68,45 +81,89 @@ struct StyleSections: View {
     }
 }
 
-/// The styles to choose from.
+/// The styles to choose from, as a row of cards in the style's own colours.
 struct StylePickerSection: View {
     let draft: ProjectDraft
 
     var body: some View {
         Section("Style") {
-            ForEach(StyleID.allCases, id: \.self) { style in
-                Button {
-                    draft.choose(style: style)
-                } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: style.symbol)
-                            .font(.title2)
-                            .frame(width: 36)
-                            .foregroundStyle(Color.accentColor)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(style.title).font(.headline)
-                            Text(style.summary).font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if draft.style == style {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.accentColor)
-                                .accessibilityHidden(true)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 12) {
+                        ForEach(StyleID.allCases, id: \.self) { style in
+                            StyleCard(style: style, isSelected: draft.style == style) {
+                                withAnimation(.snappy) { draft.choose(style: style) }
+                            }
+                            .id(style)
                         }
                     }
-                    .contentShape(.rect)
+                    .padding(.vertical, 8)
+                    .scrollTargetLayout()
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(draft.style == style ? .isSelected : [])
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.viewAligned)
+                .scrollClipDisabled()
+                .onAppear { proxy.scrollTo(draft.style, anchor: .center) }
             }
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            .listRowBackground(Color.clear)
+            .sensoryFeedback(.selection, trigger: draft.style)
         }
+    }
+}
+
+/// One style: its symbol, name and what it does, on the style's colours.
+private struct StyleCard: View {
+    let style: StyleID
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: style.symbol)
+                    .font(.title.weight(.semibold))
+                    .symbolEffect(.bounce, value: isSelected)
+                Spacer(minLength: 8)
+                Text(style.title)
+                    .font(.headline)
+                Text(style.summary)
+                    .font(.caption)
+                    .opacity(0.88)
+                    .lineLimit(3, reservesSpace: true)
+            }
+            .foregroundStyle(.white)
+            .padding(14)
+            .frame(width: 152, height: 184, alignment: .leading)
+            .background(style.gradient, in: .rect(cornerRadius: 22, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white)
+                        .padding(12)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(.white.opacity(isSelected ? 0.95 : 0), lineWidth: 3)
+                    .padding(4)
+            }
+            .shadow(color: .black.opacity(isSelected ? 0.25 : 0.08), radius: isSelected ? 12 : 4, y: isSelected ? 6 : 2)
+            .scaleEffect(isSelected ? 1 : 0.95)
+            .saturation(isSelected ? 1 : 0.8)
+        }
+        .buttonStyle(PressScale())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
 /// The free-text description for the AI director (F16), shown only with Apple Intelligence.
 struct DescriptionSection: View {
     @Bindable var draft: ProjectDraft
+    @FocusState private var isEditing: Bool
 
     var body: some View {
         Section {
@@ -115,6 +172,22 @@ struct DescriptionSection: View {
                 text: $draft.instruction, axis: .vertical
             )
             .lineLimit(2...4)
+            .focused($isEditing)
+            // A sentence or two: Return finishes it and puts the keyboard away, instead of
+            // starting a new line under which the keyboard would stay until the film is made.
+            .submitLabel(.done)
+            .onChange(of: draft.instruction) { _, text in
+                guard text.contains("\n") else { return }
+                draft.instruction = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+                isEditing = false
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isEditing = false }
+                        .fontWeight(.semibold)
+                }
+            }
         } header: {
             Text("Describe your film (optional)")
         } footer: {
@@ -182,6 +255,7 @@ struct MusicPickerSection: View {
                 Text("All built-in music is made for Autoklipp and free to use in your films.")
             }
         }
+        .sensoryFeedback(.selection, trigger: draft.musicTrackID)
         .fileImporter(isPresented: $importingSong, allowedContentTypes: [.audio]) { result in
             if case let .success(url) = result {
                 Task { await draft.importSong(from: url) }
@@ -207,7 +281,7 @@ struct MusicPickerSection: View {
         let selected = draft.musicTrackID == id
         return HStack {
             Button {
-                draft.select(songID: id)
+                withAnimation(.snappy) { draft.select(songID: id) }
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {

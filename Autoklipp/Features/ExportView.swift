@@ -36,13 +36,19 @@ struct ExportSections: View {
 
     var body: some View {
         Section("Format") {
-            Picker("Format", selection: $job.format) {
-                Text("9:16 portrait").tag(AspectFormat.portrait)
-                Text("16:9 landscape").tag(AspectFormat.landscape)
-                Text("1:1 square").tag(AspectFormat.square)
+            HStack(spacing: 10) {
+                FormatTile(format: .portrait, title: Text("9:16 portrait"), selection: $job.format)
+                FormatTile(format: .landscape, title: Text("16:9 landscape"), selection: $job.format)
+                FormatTile(format: .square, title: Text("1:1 square"), selection: $job.format)
             }
-            .pickerStyle(.inline)
-            .labelsHidden()
+            .padding(.vertical, 6)
+            .sensoryFeedback(.selection, trigger: job.format)
+            // A tap from the phone when the film is ready, and again when it is in Photos.
+            .sensoryFeedback(trigger: job.phase) { _, phase in
+                guard case .finished = phase else { return nil }
+                return .success
+            }
+            .sensoryFeedback(.success, trigger: job.saved)
             Picker("Resolution", selection: $job.resolution) {
                 Text("1080p").tag(Resolution.hd1080)
                 Text("4K").tag(Resolution.uhd4k)
@@ -59,16 +65,27 @@ struct ExportSections: View {
                 } label: {
                     Label("Export film", systemImage: "film.stack")
                         .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
                 }
+                .buttonStyle(.borderedProminent)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
                 // The film shown is the one exported; an edit still being made would change it.
                 .disabled(model.preview == nil || model.isEditing)
             case .exporting:
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(spacing: 10) {
+                    Text(job.progress.formatted(.percent.precision(.fractionLength(0))))
+                        .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
+                        .contentTransition(.numericText(value: job.progress))
+                        .animation(.snappy, value: job.progress)
                     ProgressView(value: job.progress)
-                    Text("Rendering… \(job.progress.formatted(.percent.precision(.fractionLength(0))))")
+                    Text("Rendering…")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
                 .accessibilityElement(children: .combine)
                 Button("Cancel", role: .cancel) {
                     job.cancel()
@@ -81,16 +98,72 @@ struct ExportSections: View {
                         job.saved ? LocalizedStringKey("Saved to Photos") : LocalizedStringKey("Save to Photos"),
                         systemImage: job.saved ? "checkmark.circle.fill" : "photo.badge.plus"
                     )
+                    .contentTransition(.symbolEffect(.replace))
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
                 }
+                .buttonStyle(.borderedProminent)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
                 .disabled(job.saved || job.saving)
                 ShareLink(item: url) {
                     Label("Share", systemImage: "square.and.arrow.up")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
                 }
+                .buttonStyle(.bordered)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
             }
         } footer: {
             if let message = job.message {
                 Text(message)
             }
+        }
+    }
+}
+
+/// A format as a small frame in its own proportions.
+private struct FormatTile: View {
+    let format: AspectFormat
+    let title: Text
+    @Binding var selection: AspectFormat
+
+    var body: some View {
+        let selected = selection == format
+        Button {
+            withAnimation(.snappy) { selection = format }
+        } label: {
+            VStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(selected ? AnyShapeStyle(Brand.diagonal) : AnyShapeStyle(Color(uiColor: .tertiarySystemFill)))
+                    .frame(width: frame.width, height: frame.height)
+                    .frame(height: 62)
+                title
+                    .font(.caption.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    .lineLimit(2, reservesSpace: true)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressScale())
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var frame: CGSize {
+        switch format {
+        case .portrait: CGSize(width: 33, height: 58)
+        case .landscape: CGSize(width: 58, height: 33)
+        case .square: CGSize(width: 46, height: 46)
         }
     }
 }

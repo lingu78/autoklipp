@@ -2,55 +2,20 @@ import ClipCore
 import PhotosUI
 import SwiftUI
 
-/// Step 1: pick photos and videos.
+/// Step 1: pick photos and videos, straight in the photo library, which fills the screen.
 struct MediaSelectionView: View {
     @Environment(AppModel.self) private var model
 
     private var draft: ProjectDraft { model.draft }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Pick photos and videos, choose a length and get a finished film with music.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-
-                PhotosPicker(
-                    selection: model.imports.selectionBinding,
-                    maxSelectionCount: MediaImportSession.maximumCount,
-                    selectionBehavior: .ordered,
-                    matching: MediaImportSession.filter,
-                    preferredItemEncoding: .current,
-                    photoLibrary: .shared()
-                ) {
-                    Label(
-                        draft.media.isEmpty ? LocalizedStringKey("Choose photos and videos") : LocalizedStringKey("Change selection"),
-                        systemImage: "photo.on.rectangle.angled"
-                    )
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.borderedProminent)
-                // An edit in the clip strip saves the project when it finishes; the media must not
-                // change under it.
-                .disabled(model.imports.isBusy || model.isEditing)
-
-                MediaImportStatus()
-
-                if !draft.media.isEmpty {
-                    SelectedMediaSummary(draft: draft)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 4)], spacing: 4) {
-                        ForEach(draft.media) { media in
-                            MediaThumbnail(media: media)
-                        }
-                    }
-                }
+        MediaLibraryPicker()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SelectionHeader()
             }
-            .padding()
-        }
-        .navigationTitle("New film")
-        .flowActions(actions)
+            .navigationTitle("New film")
+            .navigationBarTitleDisplayMode(.inline)
+            .flowActions(actions)
     }
 
     private var actions: [FlowAction] {
@@ -63,6 +28,55 @@ struct MediaSelectionView: View {
                 model.startOver()
             },
         ]
+    }
+}
+
+/// Above the library: what is picked so far, and the import while it runs.
+private struct SelectionHeader: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let draft = model.draft
+        VStack(alignment: .leading, spacing: 8) {
+            if draft.media.isEmpty {
+                Text("Pick photos and videos, choose a length and get a finished film with music.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                SelectedMediaSummary(draft: draft)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: draft.media.count)
+            }
+            MediaImportStatus()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(.bar)
+        .sensoryFeedback(.selection, trigger: draft.media.count)
+    }
+}
+
+/// The photo library itself, embedded: a large grid where every tap picks or unpicks.
+struct MediaLibraryPicker: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        PhotosPicker(
+            selection: model.imports.selectionBinding,
+            maxSelectionCount: MediaImportSession.maximumCount,
+            selectionBehavior: .continuousAndOrdered,
+            matching: MediaImportSession.filter,
+            preferredItemEncoding: .current,
+            photoLibrary: .shared()
+        ) {
+            Text("Choose photos and videos")
+        }
+        .photosPickerStyle(.inline)
+        .photosPickerDisabledCapabilities(.selectionActions)
+        // An edit in the clip strip saves the project when it finishes; the media must not
+        // change under it.
+        .disabled(model.isEditing)
     }
 }
 
