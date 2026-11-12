@@ -47,5 +47,9 @@ kräver ditt Apple-konto.
   allt annat som vanligt.
 - Interna testare (upp till 100 personer i ditt team) behöver ingen granskning av Apple. Externa
   testare kräver en kort granskning av det första bygget.
+- Stoppas steget *Upload to App Store Connect* med "PLA Update available" har Apple ett nytt
+  programavtal. Kontoinnehavaren godkänner det på developer.apple.com (logga in, avtalet visas
+  överst) eller i App Store Connect under Avtal; kör sedan TestFlight igen. Felet "No profiles for
+  … were found" i samma logg följer av det och försvinner med det.
 - Arbetsflödet har inte kunnat provköras utan dina nycklar. Misslyckas signeringen första gången,
   skicka loggen från steget *Archive* så justerar jag det.
