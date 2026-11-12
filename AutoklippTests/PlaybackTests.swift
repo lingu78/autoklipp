@@ -147,6 +147,10 @@ struct PlaybackTests {
             ("without the carrier track", withoutCarrier, composition {
                 $0.instructions = [ClipInstruction(timeRange: original.timeRange, trackIDs: Array(trackIDs.dropFirst()), renderer: original.renderer)]
             }),
+            ("any render format", built.composition, composition { $0.customVideoCompositorClass = AnyFormatCompositor.self }),
+            ("no buffer requirements", built.composition, composition { $0.customVideoCompositorClass = NoRequirementsCompositor.self }),
+            ("HDR compositor", built.composition, composition { $0.customVideoCompositorClass = HDRCompositor.self }),
+            ("system compositor", built.composition, try await AVMutableVideoComposition.videoComposition(withPropertiesOf: built.composition)),
         ]
 
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -169,6 +173,28 @@ struct PlaybackTests {
             _ = await Self.playsOnScreen(player, "variant \(name)")
             layer.removeFromSuperlayer()
         }
+
+        // Frames pulled from the player instead of shown by a player layer.
+        let item = built.makePlayerItem()
+        let videoOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        ])
+        item.add(videoOutput)
+        let player = AVPlayer(playerItem: item)
+        await PreviewSession.waitUntilReady(item)
+        player.play()
+        var frames = 0
+        for _ in 0..<40 {
+            try await Task.sleep(for: .milliseconds(50))
+            let time = videoOutput.itemTime(forHostTime: CACurrentMediaTime())
+            if videoOutput.hasNewPixelBuffer(forItemTime: time),
+               videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) != nil {
+                frames += 1
+            }
+        }
+        let pulled = item.status == .readyToPlay && frames > 5
+        print("playback on screen variant video output: \(pulled ? "plays" : "fails") – \(frames) frames, \(FoldTransitionTests.describe(player))")
+        player.pause()
     }
 
     static func playsOnScreen(_ player: AVPlayer, _ name: String) async -> Bool {
@@ -243,3 +269,24 @@ final class PlainBufferCompositor: ClipCompositor {
         [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
     }
 }
+
+final class AnyFormatCompositor: ClipCompositor {
+    override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
+        [
+            kCVPixelBufferIOSurfacePropertiesKey as String: [String: String](),
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+        ]
+    }
+}
+
+final class NoRequirementsCompositor: ClipCompositor {
+    override var sourcePixelBufferAttributes: [String: any Sendable]? { nil }
+    override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { [:] }
+}
+
+final class HDRCompositor: ClipCompositor {
+    @objc var supportsHDRSourceFrames: Bool { true }
+    @objc var supportsWideColorSourceFrames: Bool { true }
+    @objc var canConformColorOfSourceFrames: Bool { true }
+}
+
