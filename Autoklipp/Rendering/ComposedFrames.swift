@@ -6,9 +6,11 @@ import VideoToolbox
 /// The film's frames read through its compositor with an asset reader, the way the export reads
 /// them, for a preview whose player cannot show them (see PreviewSession.frames).
 ///
-/// Frames are read a little ahead of the time asked for, on a queue of their own. A time behind
-/// the last frame shown, or well ahead of what has been read, starts reading again from there:
-/// that is how seeking and edits reach the picture.
+/// Frames are read a little ahead of the time asked for, on a queue of their own. A jump in the
+/// time asked for (a seek, or the film playing on while no view showed it) starts reading again
+/// from there. Reading that is slower than the film shows the newest frame it has and catches up
+/// by starting again once it is two seconds behind; while a start is still under way it is
+/// never started again, so a slow start cannot keep the picture from coming.
 final class ComposedFrames: @unchecked Sendable {
     private let built: BuiltComposition
     private let frameDuration: Double
@@ -23,7 +25,7 @@ final class ComposedFrames: @unchecked Sendable {
     private var lastRead: Double?
     private var finished = false
     private var reading = false
-    private var shownTime: Double?
+    private var askedTime: Double?
     private var started = false
     private var storedImage: CGImage?
 
@@ -51,20 +53,19 @@ final class ComposedFrames: @unchecked Sendable {
         var image: CGImage?
         var readMore = false
         lock.lock()
-        if !started {
+        // Asked on every screen refresh, so playing moves the time by a frame or two at most.
+        let jumped = askedTime.map { time < $0 - 0.1 || time > $0 + 1.0 } ?? false
+        askedTime = time
+        if !started || jumped {
             restartAt = time
-        } else if time < (shownTime ?? readFrom) - 0.1 {
-            // Back in the film.
-            restartAt = time
-        } else if !finished, time > (lastRead ?? readFrom) + 1.0 {
-            // Ahead of what is being read: a jump, or reading fell behind.
+        } else if !finished, let lastRead, time > lastRead + 2.0 {
+            // Reading is slower than the film: catch up instead of falling further behind.
             restartAt = time
         } else {
             restartAt = nil
             if let index = buffered.lastIndex(where: { $0.time <= time + frameDuration }) {
                 let frame = buffered[index]
                 buffered.removeFirst(index + 1)
-                shownTime = frame.time
                 storedImage = frame.image
                 image = frame.image
             }
@@ -78,7 +79,6 @@ final class ComposedFrames: @unchecked Sendable {
             readFrom = max(0, restartAt)
             lastRead = nil
             finished = false
-            shownTime = nil
             reading = true
             readMore = true
         }

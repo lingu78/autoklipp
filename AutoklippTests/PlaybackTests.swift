@@ -107,18 +107,22 @@ struct PlaybackTests {
         window.rootViewController = UIHostingController(
             rootView: ScrollView { FilmPlayerSection(session: session) }.environment(model)
         )
+        let clock = ContinuousClock()
+        let hosted = clock.now
         try await Task.sleep(for: .milliseconds(500))
         session.play()
+        // Playing, and where the app draws the film, drawing it: up to eight seconds.
         var advanced = false
+        var drawn = 0
+        var firstFrame: Duration?
         for _ in 0..<40 {
             try await Task.sleep(for: .milliseconds(200))
-            if session.player.currentTime().seconds > 1 {
-                advanced = true
-                break
-            }
+            advanced = session.player.currentTime().seconds > 1
+            drawn = Self.views(of: PulledFrameView.self, in: window).reduce(0) { $0 + $1.framesDrawn }
+            if drawn > 0, firstFrame == nil { firstFrame = clock.now - hosted }
+            if advanced, !session.drawsFramesItself || drawn > 10 { break }
         }
-        let drawn = Self.views(of: PulledFrameView.self, in: window).reduce(0) { $0 + $1.framesDrawn }
-        print("playback on screen the app's preview: \(advanced ? "plays" : "fails"), draws frames itself: \(session.drawsFramesItself), \(drawn) frames drawn – \(FoldTransitionTests.describe(session.player))")
+        print("playback on screen the app's preview: \(advanced ? "plays" : "fails"), draws frames itself: \(session.drawsFramesItself), \(drawn) frames drawn, the first after \(firstFrame.map { "\($0)" } ?? "-") – \(FoldTransitionTests.describe(session.player))")
         session.pause()
         model.preview = nil
         print("playback on screen report: \(report)")
@@ -158,7 +162,9 @@ struct PlaybackTests {
             }
             return nil
         }
+        let asked = ContinuousClock().now
         let first = try #require(try await image(at: 0), "the first frame is read")
+        print("playback read frames: the first after \(ContinuousClock().now - asked)")
         #expect(first.width == Int(size.width) && first.height == Int(size.height))
         #expect(frames.lastImage != nil)
 
