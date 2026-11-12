@@ -1,0 +1,43 @@
+name: App Store page
+
+# Fills in the product page in App Store Connect from AppStore/ (texts, category, notes for App
+# Review, screenshots, and the newest processed build), with the API key of the TestFlight
+# workflow. Runs when anything in AppStore/ changes, or by hand. See AppStore/README.md.
+on:
+  push:
+    paths:
+      - "AppStore/**"
+      - "scripts/app_store_connect.py"
+      - ".github/workflows/appstore.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: appstore-page
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update the product page
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BUNDLE_ID: ${{ vars.BUNDLE_ID || 'se.autoklipp.app' }}
+      KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Write the App Store Connect key
+        env:
+          PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY_ID" ] || [ -z "$ISSUER_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo "::error::A secret is missing; see RELEASE.md"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/keys/AuthKey.p8"
+      - name: Update the product page
+        run: python3 scripts/app_store_connect.py --key "$RUNNER_TEMP/keys/AuthKey.p8"
+      - name: Remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
