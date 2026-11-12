@@ -27,6 +27,7 @@ final class ComposedFrames: @unchecked Sendable {
     private var reading = false
     private var askedTime: Double?
     private var started = false
+    private var shownSinceStart = false
     private var storedImage: CGImage?
 
     /// The frame shown last, for a view made for the other layout to show at once.
@@ -63,17 +64,27 @@ final class ComposedFrames: @unchecked Sendable {
             restartAt = time
         } else {
             restartAt = nil
-            if let index = buffered.lastIndex(where: { $0.time <= time + frameDuration }) {
+            if let index = buffered.lastIndex(where: { $0.time <= time + frameDuration * 1.5 }) {
                 let frame = buffered[index]
                 buffered.removeFirst(index + 1)
                 storedImage = frame.image
                 image = frame.image
+                shownSinceStart = true
+            } else if !shownSinceStart, let frame = buffered.first, frame.time < time + 0.5 {
+                // The reader's first frame after a start can lie a frame or so after the time it
+                // started at; while paused the time does not move on to it, and a full buffer
+                // would stop reading, so the picture would never change.
+                buffered.removeFirst()
+                storedImage = frame.image
+                image = frame.image
+                shownSinceStart = true
             }
             readMore = !reading && !finished && buffered.count < capacity
             if readMore { reading = true }
         }
         if let restartAt {
             started = true
+            shownSinceStart = false
             generation += 1
             buffered = []
             readFrom = max(0, restartAt)

@@ -409,8 +409,9 @@ Apples "Preparing your app for iPhone Duo" och HIG "Designing for iPhone Duo" (9
   tiden, och läser bilden genom renderaren med `AVAssetReader` som exporten (`ComposedFrames`),
   några bildrutor före spelarens tid. `FilmPlayerSection` ritar bildrutan för spelarens tid
   (`PulledFramePlayer`) med en spela/pausa-knapp. Position, ljud och om filmen spelade följer med,
-  ett hopp bakåt eller mer än en sekund framåt läser om från den tiden, och senaste bildrutan
-  ligger kvar när layouten byts. Därefter ritar appen även senare filmer själv från början. Valet
+  ett hopp bakåt eller mer än en sekund framåt läser om från den tiden (första bildrutan efter
+  omstarten visas även om den ligger en bildruta efter den tiden, så en pausad film som flyttas i
+  klippremsan byter bild), och senaste bildrutan ligger kvar när layouten byts. Därefter ritar appen även senare filmer själv från början. Valet
   görs av vad som händer på enheten, inte av enhetsmodell, så vanliga iPhones använder systemets
   spelare som förut. I reservläget saknas systemspelarens tidslinje och AirPlay; klippremsan
   används för att hoppa i filmen. En renderare som inte anger något pixelformat för

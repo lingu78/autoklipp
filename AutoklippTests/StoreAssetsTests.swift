@@ -314,9 +314,11 @@ private struct StoreSlide: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white)
                 .shadow(color: Brand.plum.opacity(0.35), radius: 12, y: 4)
+                // Two lines rather than a cut-off caption; the screen below moves down instead.
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 100)
                 .padding(.top, 180)
-                PhoneShot(image: screen, width: 1000)
+                PhoneShot(image: screen, width: 960)
             }
         }
         .frame(width: 1320, height: 2868, alignment: .top)
