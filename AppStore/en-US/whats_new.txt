@@ -1,0 +1,1 @@
+Transitions between video clips that are used whole are now drawn faster and no longer stall, in the preview and when exporting.

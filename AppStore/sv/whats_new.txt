@@ -1,0 +1,1 @@
+Övergångar mellan filmklipp som används i sin helhet ritas nu snabbare och fastnar inte längre, i förhandsvisningen och vid export.
