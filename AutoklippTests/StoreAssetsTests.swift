@@ -7,8 +7,9 @@ import UIKit
 @testable import Autoklipp
 
 /// The App Store's product page images, made from the app's own screens: the header (21:9,
-/// 3840 × 1646), the search results image (3:2, 3840 × 2560) and iPhone screenshots for the 6.9"
-/// display (1320 × 2868). A film is made from painted landscapes, so that the screens show
+/// 3840 × 1646), the search results image (3:2, 3840 × 2560), iPhone screenshots for the 6.9"
+/// display (1320 × 2868) and the 6.3" one (1206 × 2622), and iPhone Duo's outer (1398 × 2034) and
+/// inner (2853 × 2007) displays. A film is made from painted landscapes, so that the screens show
 /// something worth looking at. Runs in CI when AUTOKLIPP_STORE_ASSETS is set; the files go to the
 /// screenshots folder under store/ and to the log as base64 lines, like the other screenshots.
 @Suite("App Store images", .serialized)
@@ -197,9 +198,16 @@ struct StoreAssetsTests {
             ("6-home", Self.text("All on your iPhone", "Allt på din iPhone"),
              Self.text("Nothing is uploaded, and there is no account.", "Inget laddas upp, och du behöver inget konto."), home),
         ]
+        // The 6.9" display, and the 6.3" one App Store Connect requires (iPhone 17, 1206 × 2622),
+        // drawn at its own size rather than left to App Store Connect's scaling.
+        let medium = CGSize(width: 1206, height: 2622)
         for (name, caption, detail, image) in slides {
             let slide = try Self.render(StoreSlide(caption: caption, detail: detail, screen: image), size: CGSize(width: 1320, height: 2868))
             try Self.save(slide, name: "iphone-69-\(name)", folder: folder)
+            let smaller = try Self.render(
+                StoreSlide(caption: caption, detail: detail, screen: image, size: medium, screenWidth: 960 * medium.width / 1320), size: medium
+            )
+            try Self.save(smaller, name: "iphone-63-\(name)", folder: folder)
         }
         let header = try Self.render(StoreHeader(screens: [style, preview, length]), size: CGSize(width: 3840, height: 1646))
         try Self.save(header, name: "header", folder: folder, png: true)

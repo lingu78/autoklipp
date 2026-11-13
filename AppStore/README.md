@@ -18,9 +18,17 @@ Varje fil kan klistras in som den är. Skärmbilderna laddas upp per språk: de 
 `images/sv/` (appen på svenska, svenska bildtexter) och de engelska ur `images/`. Huvudspråket
 måste ha skärmbilder; ett språk utan egna visar huvudspråkets.
 
-**iPhone Duo:** `duo-outer-*.jpg` (ytterskärmen, 1398 × 2034) och `duo-inner-*.jpg` (innerskärmen
-utfälld, 2853 × 2007) läggs i avsnittet *iPhone Duo* för hand så länge App Store Connect API inte
-har någon typ för dem (arbetsflödet *App Store page* med *probe* frågar API:t).
+Skärmbilderna finns för tre avsnitt, på båda språken:
+
+| Avsnitt i App Store Connect | Filer | Storlek |
+| --- | --- | --- |
+| iPhone, stor skärm (6,9") | `iphone-69-*.jpg` | 1320 × 2868 |
+| iPhone, mellanstor skärm (6,3", krävs) | `iphone-63-*.jpg` | 1206 × 2622 |
+| iPhone Duo, ytterskärmen | `duo-outer-*.jpg` | 1398 × 2034 |
+| iPhone Duo, innerskärmen utfälld | `duo-inner-*.jpg` | 2853 × 2007 |
+
+API:t kallar dem `APP_IPHONE_67`, `APP_IPHONE_61` och `APP_IPHONE_DUO` (Duo saknas ännu i Apples
+publicerade specifikation men tas emot; arbetsflödet med *probe* frågar API:t vilka typer det tar).
 
 ## Version 1.0 – Product Page Information (per språk)
 

@@ -9,8 +9,9 @@ What it sets, for the app version that is being prepared (1.0):
     support, marketing and privacy policy URLs where the files exist; name and subtitle;
   - the category (Photo & Video);
   - the notes for App Review (AppStore/review_notes.txt);
-  - per language, the iPhone 6.9" screenshots (AppStore/images/<language>/iphone-69-*.jpg, else
-    the English AppStore/images/iphone-69-*.jpg), replacing those there when they changed;
+  - per language, the screenshots for the iPhone 6.9" and 6.3" displays and iPhone Duo
+    (AppStore/images/<language>/{iphone-69-,iphone-63-,duo-}*.jpg, else the English ones in
+    AppStore/images/), replacing those there when they changed;
   - the newest processed build of this version, if there is one.
 
 Not possible or not wise through the API, left to App Store Connect: the header and search
@@ -34,10 +35,11 @@ import urllib.request
 BASE = "https://api.appstoreconnect.apple.com"
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "AppStore")
 LOCALES = {"en-US": "en-US", "sv": "sv"}
-# Screenshot sets by the API's display type, and the file names that go in each. The 6.9"
-# iPhone (1320 x 2868) is APP_IPHONE_67 in the API. iPhone Duo screenshots (duo-outer-*,
-# duo-inner-*) are uploaded by hand until the API has a type for them (see --probe).
-SCREENSHOT_SETS = {"APP_IPHONE_67": "iphone-69-"}
+# Screenshot sets by the API's display type, and the file names that go in each: the 6.9" iPhone
+# (1320 x 2868) is APP_IPHONE_67, the 6.3" one App Store Connect requires (1206 x 2622) is
+# APP_IPHONE_61, and iPhone Duo (outer display 1398 x 2034, inner 2853 x 2007) is APP_IPHONE_DUO,
+# a type the live API takes though Apple's published specification does not list it yet.
+SCREENSHOT_SETS = {"APP_IPHONE_67": "iphone-69-", "APP_IPHONE_61": "iphone-63-", "APP_IPHONE_DUO": "duo-"}
 CATEGORY = "PHOTO_AND_VIDEO"
 
 
