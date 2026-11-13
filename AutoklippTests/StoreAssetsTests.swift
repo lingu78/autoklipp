@@ -16,6 +16,97 @@ import UIKit
 struct StoreAssetsTests {
     /// The iPhone 6.9" display in points; drawn at 3x, its screenshots are 1320 × 2868.
     static let phone = CGSize(width: 440, height: 956)
+    /// iPhone Duo's outer display in points, 1398 × 2034 at 3x, and its inner display unfolded,
+    /// 2853 × 2007 at 3x: the screenshot sizes App Store Connect takes for iPhone Duo.
+    static let duoOuter = CGSize(width: 466, height: 678)
+    static let duoInner = CGSize(width: 951, height: 669)
+
+    /// Screenshots for iPhone Duo: the phone's layout on the outer display and the two columns
+    /// on the inner one, each as a slide of the display's own size.
+    @Test(.timeLimit(.minutes(10)))
+    func duoImages() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["AUTOKLIPP_STORE_ASSETS"] != nil,
+              let path = environment["AUTOKLIPP_SCREENSHOTS"], !path.isEmpty else { return }
+        let folder = URL(filePath: path, directoryHint: .isDirectory).appending(path: "store", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+
+        let model = try await Self.modelWithFilm()
+        let storage = model.draft.storage
+        defer { storage.removeAll() }
+
+        let window = UIWindow(windowScene: scene)
+        window.overrideUserInterfaceStyle = .light
+        window.rootViewController = UIHostingController(
+            rootView: RootView()
+                .environment(model)
+                .modelContainer(model.container)
+        )
+        func fold(to size: CGSize, unfolded: Bool) {
+            window.traitOverrides.horizontalSizeClass = unfolded ? .regular : .compact
+            window.traitOverrides.verticalSizeClass = .regular
+            window.frame = CGRect(origin: .zero, size: size)
+            window.layoutIfNeeded()
+        }
+        fold(to: Self.duoOuter, unfolded: false)
+        window.makeKeyAndVisible()
+        defer {
+            model.preview?.pause()
+            model.closePreview()
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        func screen(_ path: [Route], wait: Double = 2) async throws -> UIImage {
+            model.path = path
+            try await Task.sleep(for: .seconds(wait))
+            return Self.draw(window)
+        }
+        let film: [Route] = [.media, .length, .style, .preview]
+
+        // Folded: the outer display, with the phone's layout.
+        let outerHome = try await screen([])
+        let outerStyle = try await screen([.media, .length, .style])
+        model.path = film
+        try await Task.sleep(for: .seconds(1))
+        model.preview?.play()
+        // Long enough for every thumbnail in the clip strip.
+        let outerFilm = try await screen(film, wait: 6)
+        model.preview?.pause()
+
+        // Unfolded: the inner display, the film beside the steps.
+        fold(to: Self.duoInner, unfolded: true)
+        model.preview?.play()
+        let innerFilm = try await screen(film, wait: 4)
+        model.preview?.pause()
+        let innerStyle = try await screen([.media, .length, .style], wait: 3)
+        model.path = film
+        try await Task.sleep(for: .seconds(1))
+        model.show(.export)
+        try await Task.sleep(for: .seconds(2))
+        let innerExport = Self.draw(window)
+        model.closeExport()
+        try await Task.sleep(for: .seconds(1))
+        let innerHome = try await screen([], wait: 3)
+
+        let outer = CGSize(width: 1398, height: 2034)
+        let inner = CGSize(width: 2853, height: 2007)
+        let slides: [(String, CGSize, CGFloat, String, String, UIImage)] = [
+            ("duo-outer-1-film", outer, 860, "Your photos, cut to the beat", "A finished film with music and transitions.", outerFilm),
+            ("duo-outer-2-style", outer, 860, "Pick a style and a song", "Five styles, with music made for each.", outerStyle),
+            ("duo-outer-3-home", outer, 860, "All on your iPhone", "Nothing is uploaded, and there is no account.", outerHome),
+            ("duo-inner-1-film", inner, 1560, "Bigger when unfolded", "The film beside every step, on the inner display.", innerFilm),
+            ("duo-inner-2-style", inner, 1560, "Pick a style and a song", "Calm, Energetic, Nostalgic, Travel or Cinematic.", innerStyle),
+            ("duo-inner-3-export", inner, 1560, "Save in 4K or share", "Portrait, landscape or square.", innerExport),
+            ("duo-inner-4-home", inner, 1560, "All on your iPhone", "Nothing is uploaded, and there is no account.", innerHome),
+        ]
+        for (name, size, screenWidth, caption, detail, image) in slides {
+            let slide = try Self.render(
+                StoreSlide(caption: caption, detail: detail, screen: image, size: size, screenWidth: screenWidth), size: size
+            )
+            try Self.save(slide, name: name, folder: folder)
+        }
+    }
 
     @Test(.timeLimit(.minutes(10)))
     func productPageImages() async throws {
@@ -295,13 +386,15 @@ private struct PhoneShot: View {
 
     var body: some View {
         let height = width * image.size.height / image.size.width
+        // Corners and bezel follow the shorter side, so a landscape screen is not over-rounded.
+        let side = min(width, height)
         Image(uiImage: image)
             .resizable()
             .frame(width: width, height: height)
-            .clipShape(.rect(cornerRadius: width * 0.13, style: .continuous))
-            .padding(width * 0.028)
-            .background(Color.black, in: .rect(cornerRadius: width * 0.155, style: .continuous))
-            .shadow(color: .black.opacity(0.35), radius: width * 0.06, y: width * 0.035)
+            .clipShape(.rect(cornerRadius: side * 0.13, style: .continuous))
+            .padding(side * 0.028)
+            .background(Color.black, in: .rect(cornerRadius: side * 0.155, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: side * 0.06, y: side * 0.035)
     }
 }
 
@@ -310,30 +403,35 @@ private struct StoreSlide: View {
     let caption: String
     let detail: String
     let screen: UIImage
+    /// The 6.9" iPhone by default; the iPhone Duo's displays have sizes of their own.
+    var size = CGSize(width: 1320, height: 2868)
+    var screenWidth: CGFloat = 960
 
     var body: some View {
+        // Text and spacing grow with the slide's shorter side, measured against the 6.9" iPhone.
+        let unit = min(size.width, size.height) / 1320
         ZStack(alignment: .top) {
             StoreBackground()
-            VStack(spacing: 70) {
-                VStack(spacing: 30) {
+            VStack(spacing: 70 * unit) {
+                VStack(spacing: 30 * unit) {
                     Text(verbatim: caption)
-                        .font(.system(size: 108, weight: .heavy, design: .rounded))
-                        .lineSpacing(-6)
+                        .font(.system(size: 108 * unit, weight: .heavy, design: .rounded))
+                        .lineSpacing(-6 * unit)
                     Text(verbatim: detail)
-                        .font(.system(size: 50, weight: .medium, design: .rounded))
+                        .font(.system(size: 50 * unit, weight: .medium, design: .rounded))
                         .opacity(0.92)
                 }
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white)
-                .shadow(color: Brand.plum.opacity(0.35), radius: 12, y: 4)
+                .shadow(color: Brand.plum.opacity(0.35), radius: 12 * unit, y: 4 * unit)
                 // Two lines rather than a cut-off caption; the screen below moves down instead.
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 100)
-                .padding(.top, 180)
-                PhoneShot(image: screen, width: 960)
+                .padding(.horizontal, 100 * unit)
+                .padding(.top, 180 * unit)
+                PhoneShot(image: screen, width: screenWidth)
             }
         }
-        .frame(width: 1320, height: 2868, alignment: .top)
+        .frame(width: size.width, height: size.height, alignment: .top)
         .clipped()
     }
 }

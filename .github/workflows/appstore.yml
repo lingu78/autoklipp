@@ -15,6 +15,10 @@ on:
         description: "Only report what App Store Connect has (screenshots, previews and their state)"
         type: boolean
         default: false
+      probe:
+        description: "Only ask the API which screenshot types it takes (iPhone Duo)"
+        type: boolean
+        default: false
 
 concurrency:
   group: appstore-page
@@ -44,7 +48,8 @@ jobs:
       - name: Update the product page
         env:
           REPORT: ${{ inputs.report_only && '--report' || '' }}
-        run: python3 scripts/app_store_connect.py --key "$RUNNER_TEMP/keys/AuthKey.p8" $REPORT
+          PROBE: ${{ inputs.probe && '--probe' || '' }}
+        run: python3 scripts/app_store_connect.py --key "$RUNNER_TEMP/keys/AuthKey.p8" $REPORT $PROBE
       - name: Remove the key
         if: always()
         run: rm -rf "$RUNNER_TEMP/keys"

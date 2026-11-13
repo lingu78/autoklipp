@@ -150,6 +150,23 @@ def report(api, app_id, version_id):
                           + (f" – {'; '.join(map(str, problems))}" if problems else ""))
 
 
+def probe_display_types(api, version_id):
+    """Asks the API whether it takes iPhone Duo screenshots: the published specification has no
+    type for them yet. A type it refuses leaves nothing behind; one it takes leaves an empty set,
+    which the screenshot upload then fills."""
+    localizations = api.get(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations", limit="50")["data"]
+    localization = next((item for item in localizations if item["attributes"].get("locale") == "en-US"), localizations[0])
+    for candidate in ["APP_IPHONE_DUO", "APP_IPHONE_DUO_OUTER", "APP_IPHONE_DUO_INNER", "APP_IPHONE_FOLD", "NOT_A_TYPE"]:
+        try:
+            created = api.request("POST", "/v1/appScreenshotSets", {"data": {
+                "type": "appScreenshotSets", "attributes": {"screenshotDisplayType": candidate},
+                "relationships": {"appStoreVersionLocalization": {"data": {
+                    "type": "appStoreVersionLocalizations", "id": localization["id"]}}}}})
+            print(f"{candidate}: taken ({created.get('data', {}).get('id')})")
+        except ApiError as error:
+            print(f"{candidate}: {error}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--key", required=True)
@@ -159,6 +176,7 @@ def main():
     parser.add_argument("--version", default="1.0")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--report", action="store_true", help="only report what App Store Connect has")
+    parser.add_argument("--probe", action="store_true", help="ask the API which screenshot types it takes")
     args = parser.parse_args()
     api = Client(args.key, args.key_id, args.issuer_id, args.dry_run)
     done, failed = [], []
@@ -185,6 +203,9 @@ def main():
     version_id = version["id"]
     state = version["attributes"].get("appVersionState") or version["attributes"].get("appStoreState")
     print(f"Version {args.version} ({version_id}), state {state}")
+    if args.probe:
+        probe_display_types(api, version_id)
+        return
     if args.report:
         report(api, app_id, version_id)
         return
