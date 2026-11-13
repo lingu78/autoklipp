@@ -1,4 +1,5 @@
 import ClipCore
+import CoreGraphics
 import CoreMedia
 import Foundation
 import ImageIO
@@ -19,6 +20,10 @@ struct RenderTimeline: Sendable {
         var transitionIn: ClipTransition
         var filter: FilterKind
         var kenBurns: KenBurns?
+        /// A video's first and last frames, drawn before its footage starts and after it ends
+        /// where it has none to spare for a transition (see CompositionBuilder).
+        var heldFirst: CGImage? = nil
+        var heldLast: CGImage? = nil
     }
 
     var renderSize: CGSize

@@ -42,8 +42,8 @@ struct RenderInputs: Sendable {
 ///
 /// Video clips alternate between two tracks so that neighbours can overlap during
 /// transitions; each clip is extended by half of each transition on either side, with footage
-/// the source has to spare or else by holding its first or last frame. Stills have no track:
-/// the compositor draws them.
+/// the source has to spare or else by holding its first or last frame, which the renderer draws
+/// from a picture taken when building. Stills have no track: the compositor draws them.
 enum CompositionBuilder {
     enum BuildError: LocalizedError {
         case emptyEdit
@@ -117,6 +117,22 @@ enum CompositionBuilder {
         return CMTimeRange(start: position, duration: range.duration)
     }
 
+    /// The first frame of a source from `seconds`, or the last one before it, as a picture for the
+    /// renderer to hold where the source has no footage to spare for a transition. Not turned
+    /// upright: the renderer turns it as it turns the track's frames.
+    private static func edgeFrame(
+        of source: VideoSource, at seconds: Double, frame: Double, first: Bool, renderSize: CGSize
+    ) async -> CGImage? {
+        let generator = AVAssetImageGenerator(asset: source.asset)
+        generator.appliesPreferredTrackTransform = false
+        generator.requestedTimeToleranceBefore = first ? .zero : time(frame)
+        generator.requestedTimeToleranceAfter = first ? time(frame) : .zero
+        let side = max(renderSize.width, renderSize.height)
+        generator.maximumSize = CGSize(width: side, height: side)
+        let at = first ? seconds : max(source.start, seconds - frame / 2)
+        return try? await generator.image(at: time(at)).image
+    }
+
     /// Retimes what `insert` put into a track so that it lasts `duration`.
     private static func scale(_ inserted: CMTimeRange, of track: AVMutableCompositionTrack, to duration: CMTime) {
         guard inserted.duration > .zero, duration > .zero, CMTimeCompare(inserted.duration, duration) != 0 else { return }
@@ -170,6 +186,8 @@ enum CompositionBuilder {
         for (index, clip) in edl.clips.enumerated() {
             guard let media = inputs.media[clip.mediaID] else { continue }
             let content: RenderTimeline.Layer.Content
+            var heldFirst: CGImage?
+            var heldLast: CGImage?
             if clip.kind == .video {
                 let source: VideoSource
                 if let cached = sources[clip.mediaID] {
@@ -191,8 +209,9 @@ enum CompositionBuilder {
                 }
 
                 // Half of each neighbouring transition, from footage the source has to spare.
-                // Where it has none, its first or last frame is held instead: an empty lane
-                // would blend the neighbour with black.
+                // Where it has none, its first or last frame is held instead (an empty lane
+                // would blend the neighbour with black): the renderer draws it from a picture,
+                // since a single frame stretched in the track stalled reading the film.
                 let rate = clip.playbackRate
                 let wantedBefore = max(0, min(clip.transitionIn.duration / 2, clip.timelineStart))
                 let nextTransition = index + 1 < edl.clips.count ? edl.clips[index + 1].transitionIn.duration / 2 : 0
@@ -226,26 +245,16 @@ enum CompositionBuilder {
                 }
                 let available = CMTimeRange(start: time(source.start), end: time(source.end))
                 let frame = 1 / Double(max(1, edl.frameRate))
-                let holdBefore = wantedBefore - before
-                if holdBefore >= frame / 2 {
-                    let held = try insert(
-                        sourceStart, min(sourceEnd, sourceStart + frame), of: source.track, available: available,
-                        into: track, at: compositionStart - holdBefore, what: "first frame of clip \(index) (\(clip.mediaID))"
-                    )
-                    scale(held, of: track, to: CMTimeSubtract(time(compositionStart), held.start))
-                }
                 let inserted = try insert(
                     sourceStart, sourceEnd, of: source.track, available: available,
                     into: track, at: compositionStart, what: "clip \(index) (\(clip.mediaID))"
                 )
                 scale(inserted, of: track, to: CMTimeSubtract(time(compositionEnd), inserted.start))
-                let holdAfter = wantedAfter - after
-                if holdAfter >= frame / 2, inserted.duration > .zero {
-                    let held = try insert(
-                        max(sourceStart, sourceEnd - frame), sourceEnd, of: source.track, available: available,
-                        into: track, at: compositionEnd, what: "last frame of clip \(index) (\(clip.mediaID))"
-                    )
-                    scale(held, of: track, to: CMTimeSubtract(time(compositionEnd + holdAfter), held.start))
+                if wantedBefore - before >= frame / 2 {
+                    heldFirst = await edgeFrame(of: source, at: sourceStart, frame: frame, first: true, renderSize: inputs.settings.renderSize)
+                }
+                if wantedAfter - after >= frame / 2, inserted.duration > .zero {
+                    heldLast = await edgeFrame(of: source, at: sourceEnd, frame: frame, first: false, renderSize: inputs.settings.renderSize)
                 }
                 content = .video(trackID: track.trackID, orientation: source.orientation)
             } else {
@@ -254,7 +263,8 @@ enum CompositionBuilder {
             layers.append(
                 RenderTimeline.Layer(
                     content: content, mediaID: clip.mediaID, start: clip.timelineStart, end: clip.timelineEnd,
-                    transitionIn: clip.transitionIn, filter: clip.filter, kenBurns: clip.kenBurns
+                    transitionIn: clip.transitionIn, filter: clip.filter, kenBurns: clip.kenBurns,
+                    heldFirst: heldFirst, heldLast: heldLast
                 )
             )
         }

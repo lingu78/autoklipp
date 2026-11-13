@@ -125,6 +125,9 @@ final class FrameRenderer: @unchecked Sendable {
         case let .video(trackID, orientation):
             if let buffer = sourceFrame(trackID) {
                 placed = place(CIImage(cvPixelBuffer: buffer).oriented(orientation), motion: nil, progress: 0)
+            } else if let held = time < layer.start ? layer.heldFirst : (time >= layer.end ? layer.heldLast : nil) {
+                // Before or after the footage, in a transition the source has none to spare for.
+                placed = place(CIImage(cgImage: held).oriented(orientation), motion: nil, progress: 0)
             }
         case let .still(url, width, height):
             let zoom = max(layer.kenBurns?.startScale ?? 1, layer.kenBurns?.endScale ?? 1)
