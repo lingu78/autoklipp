@@ -57,6 +57,9 @@ struct StoreAssetsTests {
             window.traitOverrides.horizontalSizeClass = unfolded ? .regular : .compact
             window.traitOverrides.verticalSizeClass = .regular
             window.frame = CGRect(origin: .zero, size: size)
+            // The window lies inside the simulated iPhone's screen, which gives it no bottom
+            // inset; iPhone Duo's displays keep their home indicator clear as phones do.
+            window.rootViewController?.additionalSafeAreaInsets.bottom = 20
             window.layoutIfNeeded()
         }
         fold(to: Self.duoOuter, unfolded: false)

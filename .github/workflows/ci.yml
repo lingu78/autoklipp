@@ -108,7 +108,9 @@ jobs:
           grep -o 'SCREENSHOT:[A-Za-z0-9:+/=_-]*' xcodebuild.log 2>/dev/null || true
       - name: Swedish App Store images
         # The product page images again with the app in Swedish, the primary language of the
-        # App Store page; they go to store/sv/ and the log lines start with store-sv-.
+        # App Store page; they go to store/sv/ and the log lines start with store-sv-. Made even
+        # when another test failed: they do not depend on it.
+        if: ${{ !cancelled() }}
         env:
           TEST_RUNNER_AUTOKLIPP_CI: "1"
           TEST_RUNNER_AUTOKLIPP_SCREENSHOTS: ${{ runner.temp }}/screenshots
