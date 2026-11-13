@@ -10,6 +10,11 @@ on:
       - "scripts/app_store_connect.py"
       - ".github/workflows/appstore.yml"
   workflow_dispatch:
+    inputs:
+      report_only:
+        description: "Only report what App Store Connect has (screenshots, previews and their state)"
+        type: boolean
+        default: false
 
 concurrency:
   group: appstore-page
@@ -37,7 +42,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/keys"
           printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/keys/AuthKey.p8"
       - name: Update the product page
-        run: python3 scripts/app_store_connect.py --key "$RUNNER_TEMP/keys/AuthKey.p8"
+        env:
+          REPORT: ${{ inputs.report_only && '--report' || '' }}
+        run: python3 scripts/app_store_connect.py --key "$RUNNER_TEMP/keys/AuthKey.p8" $REPORT
       - name: Remove the key
         if: always()
         run: rm -rf "$RUNNER_TEMP/keys"

@@ -117,6 +117,39 @@ def read(locale_folder, name):
     return text or None
 
 
+def delivery_state(asset):
+    return (asset["attributes"].get("assetDeliveryState") or {}).get("state")
+
+
+def report(api, app_id, version_id):
+    """Prints what the version has now, per language: screenshots and app previews, and whether
+    Apple has finished processing each (COMPLETE) or refused it (FAILED, with the reason)."""
+    app = api.get(f"/v1/apps/{app_id}")["data"]
+    print()
+    print(f"App Store Connect now (primary language {app['attributes'].get('primaryLocale')}):")
+    for localization in api.get(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations", limit="50")["data"]:
+        print(f"  {localization['attributes'].get('locale')}:")
+        kinds = [
+            ("appScreenshotSets", "screenshotDisplayType", "appScreenshots", "screenshots"),
+            ("appPreviewSets", "previewType", "appPreviews", "app previews"),
+        ]
+        for sets_path, type_key, items_path, label in kinds:
+            sets = api.get(f"/v1/appStoreVersionLocalizations/{localization['id']}/{sets_path}", limit="50")["data"]
+            if not sets:
+                print(f"    {label}: none")
+            for item_set in sets:
+                items = api.get(f"/v1/{sets_path}/{item_set['id']}/{items_path}", limit="50")["data"]
+                print(f"    {label} {item_set['attributes'].get(type_key)}: {len(items)}")
+                for item in items:
+                    attributes = item["attributes"]
+                    state = attributes.get("assetDeliveryState") or {}
+                    size = attributes.get("imageAsset") or {}
+                    dimensions = f" {size.get('width')}x{size.get('height')}" if size else ""
+                    problems = [error.get("description") or error.get("code") for error in state.get("errors") or []]
+                    print(f"      {attributes.get('fileName')}{dimensions}: {state.get('state')}"
+                          + (f" – {'; '.join(map(str, problems))}" if problems else ""))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--key", required=True)
@@ -125,6 +158,7 @@ def main():
     parser.add_argument("--bundle-id", default=os.environ.get("BUNDLE_ID", "se.autoklipp.app"))
     parser.add_argument("--version", default="1.0")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--report", action="store_true", help="only report what App Store Connect has")
     args = parser.parse_args()
     api = Client(args.key, args.key_id, args.issuer_id, args.dry_run)
     done, failed = [], []
@@ -151,6 +185,9 @@ def main():
     version_id = version["id"]
     state = version["attributes"].get("appVersionState") or version["attributes"].get("appStoreState")
     print(f"Version {args.version} ({version_id}), state {state}")
+    if args.report:
+        report(api, app_id, version_id)
+        return
 
     # Version texts, per language.
     localizations = {item["attributes"]["locale"]: item for item in api.get(
@@ -250,8 +287,15 @@ def main():
                 if shot_set is None:  # dry run
                     return
             else:
-                for old in api.get(f"/v1/appScreenshotSets/{shot_set['id']}/appScreenshots", limit="50")["data"]:
-                    print(f"  replacing {old['attributes'].get('fileName')}")
+                existing = api.get(f"/v1/appScreenshotSets/{shot_set['id']}/appScreenshots", limit="50")["data"]
+                wanted = [(name, hashlib.md5(open(os.path.join(images_folder, name), "rb").read()).hexdigest()) for name in shots]
+                there = [(old["attributes"].get("fileName"), old["attributes"].get("sourceFileChecksum")) for old in existing]
+                processed = all(delivery_state(old) == "COMPLETE" for old in existing)
+                if there == wanted and processed:
+                    print("  unchanged")
+                    return
+                for old in existing:
+                    print(f"  replacing {old['attributes'].get('fileName')} ({delivery_state(old)})")
                     api.request("DELETE", f"/v1/appScreenshots/{old['id']}")
             for name in shots:
                 data = open(os.path.join(images_folder, name), "rb").read()
@@ -284,6 +328,11 @@ def main():
         print(f"  build {build['attributes'].get('version')}")
     step("build", attach_build)
 
+    if not args.dry_run:
+        try:
+            report(api, app_id, version_id)
+        except ApiError as error:
+            print(f"(no report: {error})")
     print()
     print(f"Done: {len(done)}, failed: {len(failed)}")
     for item in failed:
