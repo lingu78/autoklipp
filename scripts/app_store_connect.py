@@ -9,7 +9,8 @@ What it sets, for the app version that is being prepared (1.0):
     support, marketing and privacy policy URLs where the files exist; name and subtitle;
   - the category (Photo & Video);
   - the notes for App Review (AppStore/review_notes.txt);
-  - the iPhone 6.9" screenshots (AppStore/images/iphone-69-*.jpg), replacing those there;
+  - per language, the iPhone 6.9" screenshots (AppStore/images/<language>/iphone-69-*.jpg, else
+    the English AppStore/images/iphone-69-*.jpg), replacing those there when they changed;
   - the newest processed build of this version, if there is one.
 
 Not possible or not wise through the API, left to App Store Connect: the header and search
@@ -33,7 +34,10 @@ import urllib.request
 BASE = "https://api.appstoreconnect.apple.com"
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "AppStore")
 LOCALES = {"en-US": "en-US", "sv": "sv"}
-SCREENSHOT_TYPE = "APP_IPHONE_67"  # the 6.9" set (1320 x 2868) in the API
+# Screenshot sets by the API's display type, and the file names that go in each. The 6.9"
+# iPhone (1320 x 2868) is APP_IPHONE_67 in the API. iPhone Duo screenshots (duo-outer-*,
+# duo-inner-*) are uploaded by hand until the API has a type for them (see --probe).
+SCREENSHOT_SETS = {"APP_IPHONE_67": "iphone-69-"}
 CATEGORY = "PHOTO_AND_VIDEO"
 
 
@@ -292,48 +296,65 @@ def main():
                 raise
         step("App Review notes", update_review_notes)
 
-    # Screenshots for the 6.9" iPhone, on the primary language.
+    # Screenshots, per language: AppStore/images/<language>/ where it has them (Swedish, the
+    # primary language), else the English ones in AppStore/images/.
     images_folder = os.path.join(ROOT, "images")
-    shots = sorted(name for name in os.listdir(images_folder) if name.startswith("iphone-69-")) if os.path.isdir(images_folder) else []
-    if shots and "en-US" in localizations:
-        def upload_screenshots():
-            localization_id = localizations["en-US"]["id"]
-            sets = api.get(f"/v1/appStoreVersionLocalizations/{localization_id}/appScreenshotSets", limit="50")["data"]
-            shot_set = next((s for s in sets if s["attributes"].get("screenshotDisplayType") == SCREENSHOT_TYPE), None)
-            if shot_set is None:
-                shot_set = api.request("POST", "/v1/appScreenshotSets", {"data": {
-                    "type": "appScreenshotSets", "attributes": {"screenshotDisplayType": SCREENSHOT_TYPE},
-                    "relationships": {"appStoreVersionLocalization": {"data": {
-                        "type": "appStoreVersionLocalizations", "id": localization_id}}}}}).get("data")
-                if shot_set is None:  # dry run
-                    return
-            else:
-                existing = api.get(f"/v1/appScreenshotSets/{shot_set['id']}/appScreenshots", limit="50")["data"]
-                wanted = [(name, hashlib.md5(open(os.path.join(images_folder, name), "rb").read()).hexdigest()) for name in shots]
-                there = [(old["attributes"].get("fileName"), old["attributes"].get("sourceFileChecksum")) for old in existing]
-                processed = all(delivery_state(old) == "COMPLETE" for old in existing)
-                if there == wanted and processed:
-                    print("  unchanged")
-                    return
-                for old in existing:
-                    print(f"  replacing {old['attributes'].get('fileName')} ({delivery_state(old)})")
-                    api.request("DELETE", f"/v1/appScreenshots/{old['id']}")
-            for name in shots:
-                data = open(os.path.join(images_folder, name), "rb").read()
-                reserved = api.request("POST", "/v1/appScreenshots", {"data": {
-                    "type": "appScreenshots", "attributes": {"fileName": name, "fileSize": len(data)},
-                    "relationships": {"appScreenshotSet": {"data": {"type": "appScreenshotSets", "id": shot_set["id"]}}}}})
-                if not reserved:
-                    continue
-                shot = reserved["data"]
-                for operation in shot["attributes"].get("uploadOperations") or []:
-                    api.upload_part(operation, data)
-                api.request("PATCH", f"/v1/appScreenshots/{shot['id']}", {"data": {
-                    "type": "appScreenshots", "id": shot["id"],
-                    "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
-                print(f"  uploaded {name} ({len(data) // 1024} KB)")
-        step(f"screenshots: {len(shots)} for the 6.9\" iPhone", upload_screenshots)
-    else:
+
+    def files(folder, prefix):
+        return sorted(name for name in os.listdir(folder) if name.startswith(prefix)) if os.path.isdir(folder) else []
+
+    def upload_set(localization_id, display_type, folder, names):
+        sets = api.get(f"/v1/appStoreVersionLocalizations/{localization_id}/appScreenshotSets", limit="50")["data"]
+        shot_set = next((s for s in sets if s["attributes"].get("screenshotDisplayType") == display_type), None)
+        if shot_set is None:
+            shot_set = api.request("POST", "/v1/appScreenshotSets", {"data": {
+                "type": "appScreenshotSets", "attributes": {"screenshotDisplayType": display_type},
+                "relationships": {"appStoreVersionLocalization": {"data": {
+                    "type": "appStoreVersionLocalizations", "id": localization_id}}}}}).get("data")
+            if shot_set is None:  # dry run
+                return
+        else:
+            existing = api.get(f"/v1/appScreenshotSets/{shot_set['id']}/appScreenshots", limit="50")["data"]
+            wanted = [(name, hashlib.md5(open(os.path.join(folder, name), "rb").read()).hexdigest()) for name in names]
+            there = [(old["attributes"].get("fileName"), old["attributes"].get("sourceFileChecksum")) for old in existing]
+            processed = all(delivery_state(old) == "COMPLETE" for old in existing)
+            if there == wanted and processed:
+                print("  unchanged")
+                return
+            for old in existing:
+                print(f"  replacing {old['attributes'].get('fileName')} ({delivery_state(old)})")
+                api.request("DELETE", f"/v1/appScreenshots/{old['id']}")
+        for name in names:
+            data = open(os.path.join(folder, name), "rb").read()
+            reserved = api.request("POST", "/v1/appScreenshots", {"data": {
+                "type": "appScreenshots", "attributes": {"fileName": name, "fileSize": len(data)},
+                "relationships": {"appScreenshotSet": {"data": {"type": "appScreenshotSets", "id": shot_set["id"]}}}}})
+            if not reserved:
+                continue
+            shot = reserved["data"]
+            for operation in shot["attributes"].get("uploadOperations") or []:
+                api.upload_part(operation, data)
+            api.request("PATCH", f"/v1/appScreenshots/{shot['id']}", {"data": {
+                "type": "appScreenshots", "id": shot["id"],
+                "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
+            print(f"  uploaded {name} ({len(data) // 1024} KB)")
+
+    any_screenshots = False
+    for locale, folder_name in LOCALES.items():
+        if locale not in localizations:
+            continue
+        own = os.path.join(images_folder, folder_name)
+        for display_type, prefix in SCREENSHOT_SETS.items():
+            folder = own if files(own, prefix) else images_folder
+            names = files(folder, prefix)
+            if not names:
+                continue
+            any_screenshots = True
+            source = os.path.relpath(folder, ROOT)
+            step(f"screenshots ({locale}, {display_type}): {len(names)} from {source}",
+                 lambda localization_id=localizations[locale]["id"], display_type=display_type, folder=folder, names=names:
+                 upload_set(localization_id, display_type, folder, names))
+    if not any_screenshots:
         print("– no screenshots in AppStore/images yet")
 
     # The newest processed build of this version.

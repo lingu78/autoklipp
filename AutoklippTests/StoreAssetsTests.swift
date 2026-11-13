@@ -16,6 +16,15 @@ import UIKit
 struct StoreAssetsTests {
     /// The iPhone 6.9" display in points; drawn at 3x, its screenshots are 1320 × 2868.
     static let phone = CGSize(width: 440, height: 956)
+    /// Swedish images, for the Swedish product page (the app's primary language in App Store
+    /// Connect): CI runs these tests again with the app in Swedish and AUTOKLIPP_STORE_LANGUAGE=sv;
+    /// the files then go to store/sv/ and the log lines start with store-sv-.
+    static let swedish = ProcessInfo.processInfo.environment["AUTOKLIPP_STORE_LANGUAGE"] == "sv"
+
+    /// The English or the Swedish text, by the language the images are made in.
+    static func text(_ english: String, _ swedish: String) -> String {
+        Self.swedish ? swedish : english
+    }
     /// iPhone Duo's outer display in points, 1398 × 2034 at 3x, and its inner display unfolded,
     /// 2853 × 2007 at 3x: the screenshot sizes App Store Connect takes for iPhone Duo.
     static let duoOuter = CGSize(width: 466, height: 678)
@@ -28,7 +37,7 @@ struct StoreAssetsTests {
         let environment = ProcessInfo.processInfo.environment
         guard environment["AUTOKLIPP_STORE_ASSETS"] != nil,
               let path = environment["AUTOKLIPP_SCREENSHOTS"], !path.isEmpty else { return }
-        let folder = URL(filePath: path, directoryHint: .isDirectory).appending(path: "store", directoryHint: .isDirectory)
+        let folder = URL(filePath: path, directoryHint: .isDirectory).appending(path: Self.swedish ? "store/sv" : "store", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
 
@@ -92,13 +101,20 @@ struct StoreAssetsTests {
         let outer = CGSize(width: 1398, height: 2034)
         let inner = CGSize(width: 2853, height: 2007)
         let slides: [(String, CGSize, CGFloat, String, String, UIImage)] = [
-            ("duo-outer-1-film", outer, 860, "Your photos, cut to the beat", "A finished film with music and transitions.", outerFilm),
-            ("duo-outer-2-style", outer, 860, "Pick a style and a song", "Five styles, with music made for each.", outerStyle),
-            ("duo-outer-3-home", outer, 860, "All on your iPhone", "Nothing is uploaded, and there is no account.", outerHome),
-            ("duo-inner-1-film", inner, 1560, "Bigger when unfolded", "The film beside every step, on the inner display.", innerFilm),
-            ("duo-inner-2-style", inner, 1560, "Pick a style and a song", "Calm, Energetic, Nostalgic, Travel or Cinematic.", innerStyle),
-            ("duo-inner-3-export", inner, 1560, "Save in 4K or share", "Portrait, landscape or square.", innerExport),
-            ("duo-inner-4-home", inner, 1560, "All on your iPhone", "Nothing is uploaded, and there is no account.", innerHome),
+            ("duo-outer-1-film", outer, 860, Self.text("Your photos, cut to the beat", "Dina bilder, klippta i takt"),
+             Self.text("A finished film with music and transitions.", "En färdig film med musik och övergångar."), outerFilm),
+            ("duo-outer-2-style", outer, 860, Self.text("Pick a style and a song", "Välj stil och låt"),
+             Self.text("Five styles, with music made for each.", "Fem stilar, med musik gjord för varje."), outerStyle),
+            ("duo-outer-3-home", outer, 860, Self.text("All on your iPhone", "Allt på din iPhone"),
+             Self.text("Nothing is uploaded, and there is no account.", "Inget laddas upp, och du behöver inget konto."), outerHome),
+            ("duo-inner-1-film", inner, 1560, Self.text("Bigger when unfolded", "Större när den fälls ut"),
+             Self.text("The film beside every step, on the inner display.", "Filmen bredvid varje steg, på innerskärmen."), innerFilm),
+            ("duo-inner-2-style", inner, 1560, Self.text("Pick a style and a song", "Välj stil och låt"),
+             Self.text("Calm, Energetic, Nostalgic, Travel or Cinematic.", "Lugn, Energisk, Nostalgisk, Resa eller Filmisk."), innerStyle),
+            ("duo-inner-3-export", inner, 1560, Self.text("Save in 4K or share", "Spara i 4K eller dela"),
+             Self.text("Portrait, landscape or square.", "Stående, liggande eller kvadrat."), innerExport),
+            ("duo-inner-4-home", inner, 1560, Self.text("All on your iPhone", "Allt på din iPhone"),
+             Self.text("Nothing is uploaded, and there is no account.", "Inget laddas upp, och du behöver inget konto."), innerHome),
         ]
         for (name, size, screenWidth, caption, detail, image) in slides {
             let slide = try Self.render(
@@ -113,7 +129,7 @@ struct StoreAssetsTests {
         let environment = ProcessInfo.processInfo.environment
         guard environment["AUTOKLIPP_STORE_ASSETS"] != nil,
               let path = environment["AUTOKLIPP_SCREENSHOTS"], !path.isEmpty else { return }
-        let folder = URL(filePath: path, directoryHint: .isDirectory).appending(path: "store", directoryHint: .isDirectory)
+        let folder = URL(filePath: path, directoryHint: .isDirectory).appending(path: Self.swedish ? "store/sv" : "store", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
 
@@ -168,12 +184,18 @@ struct StoreAssetsTests {
 
         // The screenshots, with a caption over each.
         let slides: [(String, String, String, UIImage)] = [
-            ("1-film", "Your photos, cut to the beat", "A finished film with music and transitions, made on your iPhone.", preview),
-            ("2-style", "Pick a style and a song", "Calm, Energetic, Nostalgic, Travel or Cinematic – with music made for each.", style),
-            ("3-length", "Any length you like", "From 15 seconds to 10 minutes.", length),
-            ("4-making", "The best moments, picked for you", "Sharp shots, faces and steady video, on the beat.", making),
-            ("5-export", "Save in 4K or share", "Portrait, landscape or square.", export),
-            ("6-home", "All on your iPhone", "Nothing is uploaded, and there is no account.", home),
+            ("1-film", Self.text("Your photos, cut to the beat", "Dina bilder, klippta i takt"),
+             Self.text("A finished film with music and transitions, made on your iPhone.", "En färdig film med musik och övergångar, gjord på din iPhone."), preview),
+            ("2-style", Self.text("Pick a style and a song", "Välj stil och låt"),
+             Self.text("Calm, Energetic, Nostalgic, Travel or Cinematic – with music made for each.", "Lugn, Energisk, Nostalgisk, Resa eller Filmisk – med musik gjord för varje."), style),
+            ("3-length", Self.text("Any length you like", "Precis så lång du vill"),
+             Self.text("From 15 seconds to 10 minutes.", "Från 15 sekunder till 10 minuter."), length),
+            ("4-making", Self.text("The best moments, picked for you", "De bästa stunderna, valda åt dig"),
+             Self.text("Sharp shots, faces and steady video, on the beat.", "Skarpa bilder, ansikten och stadig video, i takt."), making),
+            ("5-export", Self.text("Save in 4K or share", "Spara i 4K eller dela"),
+             Self.text("Portrait, landscape or square.", "Stående, liggande eller kvadrat."), export),
+            ("6-home", Self.text("All on your iPhone", "Allt på din iPhone"),
+             Self.text("Nothing is uploaded, and there is no account.", "Inget laddas upp, och du behöver inget konto."), home),
         ]
         for (name, caption, detail, image) in slides {
             let slide = try Self.render(StoreSlide(caption: caption, detail: detail, screen: image), size: CGSize(width: 1320, height: 2868))
@@ -205,7 +227,7 @@ struct StoreAssetsTests {
         }
         model.draft.media = media
         model.draft.lengthChoice = .preset(30)
-        model.draft.title = "Summer by the lake"
+        model.draft.title = Self.text("Summer by the lake", "Sommar vid sjön")
         model.draft.titleChosenByUser = true
         let input = GenerationInput(draft: model.draft)
         let output = try await FilmGenerator.generate(input, settings: .preview(.portrait)) { _, _ in }
@@ -215,9 +237,9 @@ struct StoreAssetsTests {
 
         let context = model.container.mainContext
         for (title, duration, age, look) in [
-            ("Summer by the lake", 30.0, -3_600.0 * 2, Landscape.all[0]),
-            ("Mountain hike", 95.0, -3_600.0 * 30, Landscape.all[2]),
-            ("Weekend by the sea", 184.0, -3_600.0 * 24 * 9, Landscape.all[1]),
+            (Self.text("Summer by the lake", "Sommar vid sjön"), 30.0, -3_600.0 * 2, Landscape.all[0]),
+            (Self.text("Mountain hike", "Bergsvandring"), 95.0, -3_600.0 * 30, Landscape.all[2]),
+            (Self.text("Weekend by the sea", "Helg vid havet"), 184.0, -3_600.0 * 24 * 9, Landscape.all[1]),
         ] {
             let project = SavedProject(id: UUID(), title: title, duration: duration, payload: Data())
             project.updatedAt = Date().addingTimeInterval(age)
@@ -266,7 +288,7 @@ struct StoreAssetsTests {
             try jpeg.write(to: folder.appending(path: "\(name).jpg"))
         }
         print("store asset: \(name) \(Int(image.size.width * image.scale)) × \(Int(image.size.height * image.scale)), \(jpeg.count / 1024) KB")
-        ScreenshotTests.log(name: "store-\(name)", jpeg: jpeg)
+        ScreenshotTests.log(name: (swedish ? "store-sv-" : "store-") + name, jpeg: jpeg)
     }
 }
 
@@ -448,7 +470,10 @@ private struct StoreHeader: View {
                     AutoklippMark(size: 300, spread: 1)
                     Text(verbatim: "Autoklipp")
                         .font(.system(size: 200, weight: .heavy, design: .rounded))
-                    Text(verbatim: "Your photos and videos become a finished film, cut to the beat of the music.")
+                    Text(verbatim: StoreAssetsTests.text(
+                        "Your photos and videos become a finished film, cut to the beat of the music.",
+                        "Dina bilder och filmer blir en färdig film, klippt i takt med musiken."
+                    ))
                         .font(.system(size: 80, weight: .semibold, design: .rounded))
                         .opacity(0.94)
                         .fixedSize(horizontal: false, vertical: true)
@@ -485,9 +510,12 @@ private struct StoreSearchResults: View {
             StoreBackground()
             VStack(spacing: 110) {
                 VStack(spacing: 36) {
-                    Text(verbatim: "Your photos, cut to the beat")
+                    Text(verbatim: StoreAssetsTests.text("Your photos, cut to the beat", "Dina bilder, klippta i takt"))
                         .font(.system(size: 190, weight: .heavy, design: .rounded))
-                    Text(verbatim: "Pick photos and videos, a length and a style. Autoklipp makes the film.")
+                    Text(verbatim: StoreAssetsTests.text(
+                        "Pick photos and videos, a length and a style. Autoklipp makes the film.",
+                        "Välj bilder och filmer, en längd och en stil. Autoklipp gör filmen."
+                    ))
                         .font(.system(size: 76, weight: .semibold, design: .rounded))
                         .opacity(0.94)
                 }

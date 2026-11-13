@@ -106,6 +106,29 @@ jobs:
         run: |
           ls -la "$RUNNER_TEMP/screenshots" 2>/dev/null || echo "no screenshots"
           grep -o 'SCREENSHOT:[A-Za-z0-9:+/=_-]*' xcodebuild.log 2>/dev/null || true
+      - name: Swedish App Store images
+        # The product page images again with the app in Swedish, the primary language of the
+        # App Store page; they go to store/sv/ and the log lines start with store-sv-.
+        env:
+          TEST_RUNNER_AUTOKLIPP_CI: "1"
+          TEST_RUNNER_AUTOKLIPP_SCREENSHOTS: ${{ runner.temp }}/screenshots
+          TEST_RUNNER_AUTOKLIPP_STORE_ASSETS: "1"
+          TEST_RUNNER_AUTOKLIPP_STORE_LANGUAGE: sv
+        run: |
+          set +e
+          xcodebuild test-without-building \
+            -project Autoklipp.xcodeproj \
+            -scheme Autoklipp \
+            -destination "id=$UDID" \
+            -parallel-testing-enabled NO \
+            -only-testing:AutoklippTests/StoreAssetsTests \
+            -testLanguage sv \
+            -testRegion SE > store-sv.log 2>&1
+          status=$?
+          grep -E '(error:|Test run|recorded an issue|✘|TEST (SUCCEEDED|FAILED)|^store asset)' store-sv.log | tail -n 60
+          grep -o 'SCREENSHOT:store-sv-[A-Za-z0-9:+/=_-]*' store-sv.log || true
+          if [ $status -ne 0 ]; then tail -n 60 store-sv.log; fi
+          exit $status
       - name: Keep screenshots
         if: always()
         # Artifacts are a convenience (the log has small copies); slow storage must not fail CI.

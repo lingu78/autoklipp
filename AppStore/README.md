@@ -13,9 +13,14 @@ och `sv/`.
 **Kvar för hand:** sidhuvud- och sökresultatbilden, App Privacy, åldersgränsen, kontaktuppgifter
 till App Review, pris och tillgänglighet samt copyright.
 
-Texterna finns på engelska (`en-US/`, appens huvudspråk i App Store Connect) och svenska (`sv/`).
-Varje fil kan klistras in som den är. Skärmbilderna laddas upp på engelska; svenska sidan visar
-samma bilder tills den får egna.
+Texterna finns på svenska (`sv/`, appens huvudspråk i App Store Connect) och engelska (`en-US/`).
+Varje fil kan klistras in som den är. Skärmbilderna laddas upp per språk: de svenska ur
+`images/sv/` (appen på svenska, svenska bildtexter) och de engelska ur `images/`. Huvudspråket
+måste ha skärmbilder; ett språk utan egna visar huvudspråkets.
+
+**iPhone Duo:** `duo-outer-*.jpg` (ytterskärmen, 1398 × 2034) och `duo-inner-*.jpg` (innerskärmen
+utfälld, 2853 × 2007) läggs i avsnittet *iPhone Duo* för hand så länge App Store Connect API inte
+har någon typ för dem (arbetsflödet *App Store page* med *probe* frågar API:t).
 
 ## Version 1.0 – Product Page Information (per språk)
 
