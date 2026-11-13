@@ -169,7 +169,8 @@ struct StoreAssetsTests {
             format.scale = image.scale
             format.opaque = true
             let opaque = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in image.draw(at: .zero) }
-            try #require(opaque.pngData()).write(to: folder.appending(path: "\(name).png"))
+            let data = try #require(opaque.pngData())
+            try data.write(to: folder.appending(path: "\(name).png"))
         } else {
             try jpeg.write(to: folder.appending(path: "\(name).jpg"))
         }
