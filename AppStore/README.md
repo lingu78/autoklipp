@@ -21,8 +21,8 @@ samma bilder tills den får egna.
 
 | Fält i App Store Connect | Fil | Gräns |
 | --- | --- | --- |
-| Header (sidhuvud, 21:9) | `images/header.jpg` (3840 × 1646) | – |
-| Search Results (sökresultat, 3:2) | `images/search-results.jpg` (3840 × 2560) | – |
+| Header (sidhuvud, 21:9) | `images/header.png` (3840 × 1646) | PNG, ingen genomskinlighet |
+| Search Results (sökresultat, 3:2) | `images/search-results.png` (3840 × 2560) | PNG, ingen genomskinlighet |
 | Promotional Text | `promotional_text.txt` | 170 tecken |
 | Description | `description.txt` | 4000 tecken |
 | Keywords | `keywords.txt` | 100 byte |

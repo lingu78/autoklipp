@@ -89,9 +89,9 @@ struct StoreAssetsTests {
             try Self.save(slide, name: "iphone-69-\(name)", folder: folder)
         }
         let header = try Self.render(StoreHeader(screens: [style, preview, length]), size: CGSize(width: 3840, height: 1646))
-        try Self.save(header, name: "header", folder: folder)
+        try Self.save(header, name: "header", folder: folder, png: true)
         let search = try Self.render(StoreSearchResults(screens: [style, preview, export]), size: CGSize(width: 3840, height: 2560))
-        try Self.save(search, name: "search-results", folder: folder)
+        try Self.save(search, name: "search-results", folder: folder, png: true)
     }
 
     // MARK: The film
@@ -160,9 +160,19 @@ struct StoreAssetsTests {
     }
 
     /// The full image in the folder and, in base64 lines, in the log.
-    static func save(_ image: UIImage, name: String, folder: URL) throws {
+    static func save(_ image: UIImage, name: String, folder: URL, png: Bool = false) throws {
         let jpeg = try #require(image.jpegData(compressionQuality: 0.88))
-        try jpeg.write(to: folder.appending(path: "\(name).jpg"))
+        if png {
+            // The product page's header and search results images take PNG without
+            // transparency, not JPEG; the log still carries the smaller JPEG to look at.
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            format.opaque = true
+            let opaque = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in image.draw(at: .zero) }
+            try #require(opaque.pngData()).write(to: folder.appending(path: "\(name).png"))
+        } else {
+            try jpeg.write(to: folder.appending(path: "\(name).jpg"))
+        }
         print("store asset: \(name) \(Int(image.size.width * image.scale)) × \(Int(image.size.height * image.scale)), \(jpeg.count / 1024) KB")
         ScreenshotTests.log(name: "store-\(name)", jpeg: jpeg)
     }
