@@ -10,8 +10,12 @@ kampanjtext, namn och undertitel på engelska och svenska, kategorin, anteckning
 `support_url.txt`, `privacy_policy_url.txt` (och valfritt `marketing_url.txt`) finns i `en-US/`
 och `sv/`.
 
-**Kvar för hand:** sidhuvud- och sökresultatbilden, App Privacy, åldersgränsen, kontaktuppgifter
-till App Review, pris och tillgänglighet samt copyright.
+Arbetsflödet sätter också Content Rights (inget innehåll från andra), gratis pris, tillgänglighet
+i alla länder och adresserna till supportsidan (`support.md`) och integritetspolicyn
+(`privacy-policy.md`), båda i det här offentliga repot med GitHub-ärenden som kontaktväg.
+
+**Kvar för hand:** sidhuvud- och sökresultatbilden, App Privacy (måste göras av en Admin; API:t
+kan inte), åldersgränsen, kontaktuppgifter till App Review samt copyright.
 
 Texterna finns på svenska (`sv/`, appens huvudspråk i App Store Connect) och engelska (`en-US/`).
 Varje fil kan klistras in som den är. Skärmbilderna laddas upp per språk: de svenska ur
@@ -63,15 +67,16 @@ Versionen i App Store Connect är 1.0, så bygget måste också ha version 1.0. 
 
 ## App Privacy
 
-- **Privacy Policy URL:** krävs. `privacy-policy.md` är färdig (engelska och svenska); fyll i en
-  e-postadress och lägg den där den kan läsas utan inloggning, till exempel en offentlig GitHub
-  Gist eller en publicerad Notion-sida, och klistra in adressen.
-- **Data Collection:** *No, we do not collect data from this app.* Appen har ingen analys, ingen
-  reklam och använder inte nätverket.
+- **Privacy Policy URL:** `privacy-policy.md` i repot, ifylld av arbetsflödet
+  (`privacy_policy_url.txt`). Pekar på arbetsgrenen; slås den ihop med `main`, byt adressen i
+  `privacy_policy_url.txt` och `support_url.txt` till `main`.
+- **Data Collection (för hand, en Admin):** App Privacy → *Get Started* → *No, we do not collect
+  data from this app* → *Save* → *Publish*. Appen har ingen analys, ingen reklam och använder inte
+  nätverket.
 
 ## Pricing and Availability
 
-Välj pris (t.ex. gratis) och länder.
+Gratis i alla länder, även nya som Apple lägger till; sätts av arbetsflödet (bas: Sverige).
 
 ## App Review Information
 

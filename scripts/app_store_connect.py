@@ -14,9 +14,10 @@ What it sets, for the app version that is being prepared (1.0):
     AppStore/images/), replacing those there when they changed;
   - the newest processed build of this version, if there is one.
 
-Not possible or not wise through the API, left to App Store Connect: the header and search
-results images, App Privacy ("Data Not Collected"), the age rating questionnaire, contact
-details for App Review, price and availability, and the copyright line.
+It also sets the content rights (no third-party content), a free price and availability in
+every territory. Not possible or not wise through the API, left to App Store Connect: the
+header and search results images, App Privacy ("Data Not Collected", by an Admin), the age
+rating questionnaire, contact details for App Review, and the copyright line.
 
     python3 scripts/app_store_connect.py --key AuthKey.p8 [--dry-run]
 """
@@ -41,6 +42,10 @@ LOCALES = {"en-US": "en-US", "sv": "sv"}
 # a type the live API takes though Apple's published specification does not list it yet.
 SCREENSHOT_SETS = {"APP_IPHONE_67": "iphone-69-", "APP_IPHONE_61": "iphone-63-", "APP_IPHONE_DUO": "duo-"}
 CATEGORY = "PHOTO_AND_VIDEO"
+# The app shows only the user's own photos and videos, and music made for it (CC0).
+CONTENT_RIGHTS = "DOES_NOT_USE_THIRD_PARTY_CONTENT"
+# Free, in every territory; prices follow the base territory.
+BASE_TERRITORY = "SWE"
 
 
 class ApiError(Exception):
@@ -121,6 +126,73 @@ def read(locale_folder, name):
         return None
     text = open(path, encoding="utf-8").read().strip()
     return text or None
+
+
+def all_pages(api, path, **params):
+    """Every item of a listing, following its next links."""
+    page = api.get(path, **params)
+    items = list(page["data"])
+    while page.get("links", {}).get("next"):
+        page = api.request("GET", page["links"]["next"])
+        items += page["data"]
+    return items
+
+
+def set_free_price(api, app_id):
+    """Makes the app free: a price schedule whose one manual price is the base territory's free
+    price point. Apple equalizes it to every other territory."""
+    page = api.get(f"/v1/apps/{app_id}/appPricePoints", **{"filter[territory]": BASE_TERRITORY, "limit": "200"})
+    free = None
+    while free is None:
+        free = next((point for point in page["data"] if float(point["attributes"].get("customerPrice") or "nan") == 0), None)
+        if free is None:
+            if not page.get("links", {}).get("next"):
+                raise RuntimeError(f"no free price point in {BASE_TERRITORY}")
+            page = api.request("GET", page["links"]["next"])
+    api.request("POST", "/v1/appPriceSchedules", {
+        "data": {
+            "type": "appPriceSchedules",
+            "relationships": {
+                "app": {"data": {"type": "apps", "id": app_id}},
+                "baseTerritory": {"data": {"type": "territories", "id": BASE_TERRITORY}},
+                "manualPrices": {"data": [{"type": "appPrices", "id": "${free}"}]},
+            },
+        },
+        "included": [{
+            "type": "appPrices", "id": "${free}",
+            "attributes": {"startDate": None},
+            "relationships": {"appPricePoint": {"data": {"type": "appPricePoints", "id": free["id"]}}},
+        }],
+    })
+
+
+def make_available(api, app_id):
+    """Makes the app available in every territory, and in new ones as Apple adds them, unless
+    its availability is already set (then it is left as it is)."""
+    try:
+        api.get(f"/v1/apps/{app_id}/appAvailabilityV2")
+        print("  already set")
+        return
+    except ApiError as error:
+        if error.status != 404:
+            raise
+    territories = [item["id"] for item in all_pages(api, "/v1/territories", limit="200")]
+    api.request("POST", "/v2/appAvailabilities", {
+        "data": {
+            "type": "appAvailabilities",
+            "attributes": {"availableInNewTerritories": True},
+            "relationships": {
+                "app": {"data": {"type": "apps", "id": app_id}},
+                "territoryAvailabilities": {"data": [{"type": "territoryAvailabilities", "id": f"${{{t}}}"} for t in territories]},
+            },
+        },
+        "included": [{
+            "type": "territoryAvailabilities", "id": f"${{{t}}}",
+            "attributes": {"available": True},
+            "relationships": {"territory": {"data": {"type": "territories", "id": t}}},
+        } for t in territories],
+    })
+    print(f"  {len(territories)} territories")
 
 
 def delivery_state(asset):
@@ -249,6 +321,10 @@ def main():
     step("category: Photo & Video", lambda: api.request("PATCH", f"/v1/appInfos/{info_id}", {"data": {
         "type": "appInfos", "id": info_id,
         "relationships": {"primaryCategory": {"data": {"type": "appCategories", "id": CATEGORY}}}}}))
+    step("content rights: no third-party content", lambda: api.request("PATCH", f"/v1/apps/{app_id}", {"data": {
+        "type": "apps", "id": app_id, "attributes": {"contentRightsDeclaration": CONTENT_RIGHTS}}}))
+    step("price: free", lambda: set_free_price(api, app_id))
+    step("availability: every territory", lambda: make_available(api, app_id))
     info_localizations = {item["attributes"]["locale"]: item for item in api.get(
         f"/v1/appInfos/{info_id}/appInfoLocalizations", limit="50")["data"]}
     for locale, folder in LOCALES.items():
@@ -381,8 +457,8 @@ def main():
     print(f"Done: {len(done)}, failed: {len(failed)}")
     for item in failed:
         print(f"  ✗ {item}")
-    print("Still in App Store Connect by hand: header and search results images, App Privacy,")
-    print("age rating, App Review contact details, price and availability, copyright.")
+    print("Still in App Store Connect by hand: header and search results images, App Privacy")
+    print("(an Admin), age rating, App Review contact details, copyright.")
     if not args.dry_run and len(failed) > len(done):
         sys.exit(1)
 

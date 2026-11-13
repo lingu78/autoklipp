@@ -1,6 +1,6 @@
 # Autoklipp – Privacy Policy
 
-_Last updated: 12 November 2026_
+_Last updated: 13 November 2026_
 
 Autoklipp makes films from the photos and videos you choose. It does so entirely on your iPhone.
 
@@ -18,13 +18,13 @@ a film. Finished films are added to your Photos library only when you choose Sav
 short text descriptions of your clips (never the pictures) to choose and order them. This happens
 on the device.
 
-**Contact.** Questions about this policy: [your e-mail address].
+**Contact.** Questions about this policy: open an issue at [github.com/lingu78/autoklipp/issues](https://github.com/lingu78/autoklipp/issues).
 
 ---
 
 # Autoklipp – Integritetspolicy
 
-_Senast uppdaterad: 12 november 2026_
+_Senast uppdaterad: 13 november 2026_
 
 Autoklipp gör filmer av bilderna och filmerna du väljer, och gör det helt på din iPhone.
 
@@ -42,4 +42,4 @@ läggs i ditt bildbibliotek bara när du väljer Spara i Bilder.
 korta textbeskrivningar av klippen (aldrig bilderna) för att välja och ordna dem. Det sker på
 telefonen.
 
-**Kontakt.** Frågor om policyn: [din e-postadress].
+**Kontakt.** Frågor om policyn: skapa ett ärende på [github.com/lingu78/autoklipp/issues](https://github.com/lingu78/autoklipp/issues).
