@@ -57,6 +57,18 @@ Versionen i App Store Connect är 1.0, så bygget måste också ha version 1.0. 
 `MARKETING_VERSION = 1.0`; kör arbetsflödet **TestFlight** en gång till och välj det nya bygget
 (1.0 och ett byggnummer) under *Build* på versionssidan.
 
+## Nästa version (uppdateringar)
+
+Version 1.0 lämnas orörd medan den granskas eller ligger ute: arbetsflödet ändrar bara en version
+som förbereds (*Prepare for Submission*) och rapporterar annars bara. För en uppdatering:
+
+1. App Store Connect → **+** vid iOS App → nytt versionsnummer, t.ex. 1.0.1.
+2. Samma nummer som `MARKETING_VERSION` i projektet, och arbetsflödet **TestFlight**.
+3. *What's New* per språk i `sv/whats_new.txt` och `en-US/whats_new.txt` (krävs för uppdateringar).
+4. Arbetsflödet **App Store page** (körs vid push hit, eller för hand) fyller i den nya versionen:
+   texter, skärmbilder och det senaste färdiga bygget av den.
+5. **Add for Review** i App Store Connect.
+
 ## App Information
 
 - **Name:** `name.txt` (Autoklipp) · **Subtitle:** `subtitle.txt` (30 tecken)

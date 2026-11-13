@@ -42,6 +42,8 @@ LOCALES = {"en-US": "en-US", "sv": "sv"}
 # a type the live API takes though Apple's published specification does not list it yet.
 SCREENSHOT_SETS = {"APP_IPHONE_67": "iphone-69-", "APP_IPHONE_61": "iphone-63-", "APP_IPHONE_DUO": "duo-"}
 CATEGORY = "PHOTO_AND_VIDEO"
+# Version states in which App Store Connect lets the product page be changed.
+EDITABLE_STATES = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED", "INVALID_BINARY"}
 # The app shows only the user's own photos and videos, and music made for it (CC0).
 CONTENT_RIGHTS = "DOES_NOT_USE_THIRD_PARTY_CONTENT"
 # Free, in every territory; prices follow the base territory.
@@ -251,7 +253,7 @@ def main():
     parser.add_argument("--key-id", default=os.environ.get("KEY_ID"))
     parser.add_argument("--issuer-id", default=os.environ.get("ISSUER_ID"))
     parser.add_argument("--bundle-id", default=os.environ.get("BUNDLE_ID", "se.autoklipp.app"))
-    parser.add_argument("--version", default="1.0")
+    parser.add_argument("--version", help="the version to fill in; by default the one being prepared")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--report", action="store_true", help="only report what App Store Connect has")
     parser.add_argument("--probe", action="store_true", help="ask the API which screenshot types it takes")
@@ -275,12 +277,27 @@ def main():
     print(f"App {apps[0]['attributes'].get('name')} ({app_id})")
 
     versions = api.get(f"/v1/apps/{app_id}/appStoreVersions", **{"filter[platform]": "IOS", "limit": "20"})["data"]
-    version = next((v for v in versions if v["attributes"].get("versionString") == args.version), None)
+    def state_of(item):
+        return item["attributes"].get("appVersionState") or item["attributes"].get("appStoreState")
+
+    if args.version:
+        version = next((v for v in versions if v["attributes"].get("versionString") == args.version), None)
+    else:
+        # The version being prepared; else the newest, which is then only reported on.
+        version = next((v for v in versions if state_of(v) in EDITABLE_STATES), versions[0] if versions else None)
     if version is None:
-        sys.exit(f"No version {args.version} in App Store Connect; found {[v['attributes'].get('versionString') for v in versions]}.")
+        sys.exit(f"No version {args.version or ''} in App Store Connect; found {[v['attributes'].get('versionString') for v in versions]}.")
     version_id = version["id"]
-    state = version["attributes"].get("appVersionState") or version["attributes"].get("appStoreState")
-    print(f"Version {args.version} ({version_id}), state {state}")
+    version_string = version["attributes"].get("versionString")
+    state = state_of(version)
+    print(f"Version {version_string} ({version_id}), state {state}")
+    if state not in EDITABLE_STATES and not args.probe:
+        # Waiting for or in review, or released: App Store Connect locks the page, and changing
+        # what it allows (a build, the texts) could pull the version out of review. Nothing is
+        # changed until a new version is created in App Store Connect.
+        print(f"Version {version_string} is {state}: nothing is changed. Create the next version in App Store Connect to fill it in.")
+        report(api, app_id, version_id)
+        return
     if args.probe:
         probe_display_types(api, version_id)
         return
@@ -298,6 +315,8 @@ def main():
             "promotionalText": read(folder, "promotional_text.txt"),
             "supportUrl": read(folder, "support_url.txt"),
             "marketingUrl": read(folder, "marketing_url.txt"),
+            # "What's New" for an update; App Store Connect has none for the first version.
+            "whatsNew": read(folder, "whats_new.txt") if len(versions) > 1 else None,
         }.items() if value}
 
         def update_version_texts(locale=locale, attributes=attributes):
@@ -438,10 +457,10 @@ def main():
     # The newest processed build of this version.
     def attach_build():
         builds = api.get("/v1/builds", **{
-            "filter[app]": app_id, "filter[preReleaseVersion.version]": args.version,
+            "filter[app]": app_id, "filter[preReleaseVersion.version]": version_string,
             "filter[processingState]": "VALID", "sort": "-uploadedDate", "limit": "1"})["data"]
         if not builds:
-            raise RuntimeError(f"no processed build of {args.version} yet; run TestFlight and try again")
+            raise RuntimeError(f"no processed build of {version_string} yet; run TestFlight and try again")
         build = builds[0]
         api.request("PATCH", f"/v1/appStoreVersions/{version_id}/relationships/build", {
             "data": {"type": "builds", "id": build["id"]}})
