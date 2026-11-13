@@ -169,11 +169,17 @@ struct RenderingTests {
     func crossfadeHoldsTheEdgeFramesOfVideosWithoutSpareFootage() async throws {
         let folder = try TestMedia.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
+        let clock = ContinuousClock()
+        let started = clock.now
         let built = try await twoWholeVideos(in: folder)
         let tracks = try await built.composition.loadTracks(withMediaType: .video)
+        let builtAfter = clock.now - started
 
         // Copying a frame blocks until it is rendered, so the frames are read on a queue rather
         // than on one of the threads Swift's concurrency shares with the tests running alongside.
+        // Reading this 6 s film twice hung on the iOS 26 simulator until the time limit stopped
+        // the whole test process; a watchdog stops the reader instead and reports how far it got.
+        let progress = ReadProgress()
         typealias Frames = (status: AVAssetReader.Status, alone: [Double], blended: [(time: Double, brightness: Double)])
         let read: Frames = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -189,9 +195,11 @@ struct RenderingTests {
                 )
                 output.videoComposition = built.videoComposition
                 reader.add(output)
+                progress.watch(reader, for: 45)
                 reader.startReading()
                 while let sample = output.copyNextSampleBuffer() {
                     let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                    progress.read(time)
                     // The crossfade runs from 2.5 to 3.5 s; each clip shows alone at 1 and 5 s.
                     let inTransition = time > 2.5 && time < 3.5
                     let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
@@ -199,9 +207,13 @@ struct RenderingTests {
                     let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
                     if inTransition { blended.append((time, brightness)) } else { alone.append(brightness) }
                 }
+                progress.finish()
                 continuation.resume(returning: (status: reader.status, alone: alone, blended: blended))
             }
         }
+        let report = progress.report
+        print("rendering crossfade: built in \(builtAfter), \(report)")
+        #expect(!progress.stoppedByWatchdog, "reading stopped by the watchdog: built in \(builtAfter), \(report)")
         let alone = read.alone
         let blended = read.blended
         #expect(read.status == .completed)
@@ -268,5 +280,47 @@ struct MusicCatalogTests {
         #expect(track.license == "CC0-1.0")
         let layout = MusicLayout.make(track: track.info, filmDuration: 600)
         #expect(abs(layout.segments.reduce(0) { $0 + $1.duration } - 600) < 1e-6)
+    }
+}
+
+/// How far reading a film got, for a test to report when reading stalls; a watchdog cancels the
+/// reader after a while so a stalled read ends instead of hanging the test process.
+private final class ReadProgress: @unchecked Sendable {
+    private let lock = NSLock()
+    private var frames = 0
+    private var lastTime: Double?
+    private var done = false
+    private var stopped = false
+    private var status = "not started"
+
+    func watch(_ reader: AVAssetReader, for seconds: Double) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
+            let stop = lock.withLock {
+                guard !done else { return false }
+                stopped = true
+                status = "reader status \(reader.status.rawValue), error \(String(describing: reader.error))"
+                return true
+            }
+            if stop { reader.cancelReading() }
+        }
+    }
+
+    func read(_ time: Double) {
+        lock.withLock {
+            frames += 1
+            lastTime = time
+        }
+    }
+
+    func finish() {
+        lock.withLock { done = true }
+    }
+
+    var stoppedByWatchdog: Bool { lock.withLock { stopped } }
+
+    var report: String {
+        lock.withLock {
+            "\(frames) frames read, the last at \(lastTime.map { "\($0) s" } ?? "-")" + (stopped ? ", stopped: \(status)" : "")
+        }
     }
 }
