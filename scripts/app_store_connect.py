@@ -207,6 +207,12 @@ def report(api, app_id, version_id):
     app = api.get(f"/v1/apps/{app_id}")["data"]
     print()
     print(f"App Store Connect now (primary language {app['attributes'].get('primaryLocale')}):")
+    builds = api.get("/v1/builds", **{"filter[app]": app_id, "sort": "-uploadedDate", "limit": "5", "include": "preReleaseVersion"})
+    versions = {item["id"]: item["attributes"].get("version") for item in builds.get("included", []) if item["type"] == "preReleaseVersions"}
+    for build in builds["data"]:
+        release = (build.get("relationships", {}).get("preReleaseVersion", {}).get("data") or {}).get("id")
+        print(f"  build {versions.get(release, '?')} ({build['attributes'].get('version')}): "
+              f"{build['attributes'].get('processingState')}, uploaded {build['attributes'].get('uploadedDate')}")
     for localization in api.get(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations", limit="50")["data"]:
         print(f"  {localization['attributes'].get('locale')}:")
         kinds = [
