@@ -257,6 +257,7 @@ def report(api, app_id, version_id):
         release = (build.get("relationships", {}).get("preReleaseVersion", {}).get("data") or {}).get("id")
         print(f"  build {versions.get(release, '?')} ({build['attributes'].get('version')}): "
               f"{build['attributes'].get('processingState')}, uploaded {build['attributes'].get('uploadedDate')}")
+    report_availability(api, app_id)
     for localization in api.get(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations", limit="50")["data"]:
         print(f"  {localization['attributes'].get('locale')}:")
         kinds = [
@@ -278,6 +279,34 @@ def report(api, app_id, version_id):
                     problems = [error.get("description") or error.get("code") for error in state.get("errors") or []]
                     print(f"      {attributes.get('fileName')}{dimensions}: {state.get('state')}"
                           + (f" – {'; '.join(map(str, problems))}" if problems else ""))
+
+
+def report_availability(api, app_id):
+    """Prints where the app is on sale and, where it is not, why: Apple's content statuses per
+    territory (TRADER_STATUS_NOT_PROVIDED in the EU while the Digital Services Act trader
+    status is missing, MISSING_RATING, and so on), Sweden first."""
+    try:
+        availability = api.get(f"/v1/apps/{app_id}/appAvailabilityV2")["data"]
+    except ApiError as error:
+        print(f"  availability: {error}")
+        return
+    print(f"  availability: in new territories too: {availability['attributes'].get('availableInNewTerritories')}")
+    page = api.get(f"/v2/appAvailabilities/{availability['id']}/territoryAvailabilities", include="territory", limit="200")
+    rows = list(page["data"])
+    while page.get("links", {}).get("next"):
+        page = api.request("GET", page["links"]["next"])
+        rows += page["data"]
+    groups = {}
+    for row in rows:
+        territory = (row.get("relationships", {}).get("territory", {}).get("data") or {}).get("id", "?")
+        attributes = row["attributes"]
+        statuses = ", ".join(attributes.get("contentStatuses") or []) or "-"
+        if territory == BASE_TERRITORY:
+            print(f"    {territory}: available {attributes.get('available')}, release date "
+                  f"{attributes.get('releaseDate') or '-'}, {statuses}")
+        groups.setdefault((attributes.get("available"), statuses), []).append(territory)
+    for (available, statuses), territories in sorted(groups.items(), key=lambda item: -len(item[1])):
+        print(f"    available {available}, {statuses}: {len(territories)} territories: {' '.join(sorted(territories))}")
 
 
 def probe_display_types(api, version_id):
