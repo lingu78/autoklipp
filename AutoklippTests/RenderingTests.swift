@@ -175,45 +175,17 @@ struct RenderingTests {
         let tracks = try await built.composition.loadTracks(withMediaType: .video)
         let builtAfter = clock.now - started
 
-        // Copying a frame blocks until it is rendered, so the frames are read on a queue rather
-        // than on one of the threads Swift's concurrency shares with the tests running alongside.
-        // Reading this 6 s film twice hung on the iOS 26 simulator until the time limit stopped
-        // the whole test process; a watchdog stops the reader instead and reports how far it got.
-        let progress = ReadProgress()
-        typealias Frames = (status: AVAssetReader.Status, alone: [Double], blended: [(time: Double, brightness: Double)])
-        let read: Frames = await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                var alone: [Double] = []
-                var blended: [(time: Double, brightness: Double)] = []
-                guard let reader = try? AVAssetReader(asset: built.composition) else {
-                    continuation.resume(returning: (status: .failed, alone: alone, blended: blended))
-                    return
-                }
-                let output = AVAssetReaderVideoCompositionOutput(
-                    videoTracks: tracks,
-                    videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-                )
-                output.videoComposition = built.videoComposition
-                reader.add(output)
-                progress.watch(reader, for: 45)
-                reader.startReading()
-                while let sample = output.copyNextSampleBuffer() {
-                    let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-                    progress.read(time)
-                    // The crossfade runs from 2.5 to 3.5 s; each clip shows alone at 1 and 5 s.
-                    let inTransition = time > 2.5 && time < 3.5
-                    let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
-                    guard inTransition || isAlone, let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-                    let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
-                    if inTransition { blended.append((time, brightness)) } else { alone.append(brightness) }
-                }
-                progress.finish()
-                continuation.resume(returning: (status: reader.status, alone: alone, blended: blended))
-            }
+        // Reading this film has stalled now and then on the iOS 26 simulator, never on the Xcode
+        // 27 jobs: no frame came for good, once after 1.5 s and twice right after 3.17 s, in runs
+        // that took twice as long as usual. Why is not known. A stalled read is reported and the
+        // film read once more from the start; a second stall fails the test.
+        var read = await Self.readCrossfade(built, tracks: tracks)
+        print("rendering crossfade: built in \(builtAfter), \(read.report)")
+        if read.stalled {
+            read = await Self.readCrossfade(built, tracks: tracks)
+            print("rendering crossfade, read again: \(read.report)")
         }
-        let report = progress.report
-        print("rendering crossfade: built in \(builtAfter), \(report)")
-        #expect(!progress.stoppedByWatchdog, "reading stopped by the watchdog: built in \(builtAfter), \(report)")
+        #expect(!read.stalled, "reading stalled twice: \(read.report)")
         let alone = read.alone
         let blended = read.blended
         #expect(read.status == .completed)
@@ -224,6 +196,55 @@ struct RenderingTests {
             // With an empty lane one side of the blend was black: half dark at the cut.
             #expect(frame.brightness > 0.85 * darkest, "frame at \(frame.time) s: \(frame.brightness) vs \(darkest)")
         }
+    }
+
+    struct CrossfadeFrames {
+        var status: AVAssetReader.Status
+        var alone: [Double] = []
+        var blended: [(time: Double, brightness: Double)] = []
+        var stalled = false
+        var report = ""
+    }
+
+    /// The crossfade film's frames where each clip shows alone (1 and 5 s) and those of the
+    /// crossfade (2.5 to 3.5 s). Copying a frame blocks until it is rendered, so this runs on a
+    /// thread of its own rather than on one of those Swift's concurrency shares with the tests
+    /// running alongside. A watchdog cancels the reader when no frame has come for 20 s, or after
+    /// 50 s in all, so a stalled read ends instead of hanging the test process.
+    static func readCrossfade(_ built: BuiltComposition, tracks: [AVAssetTrack]) async -> CrossfadeFrames {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: Self.readCrossfadeBlocking(built, tracks: tracks))
+            }
+        }
+    }
+
+    private static func readCrossfadeBlocking(_ built: BuiltComposition, tracks: [AVAssetTrack]) -> CrossfadeFrames {
+        guard let reader = try? AVAssetReader(asset: built.composition) else { return CrossfadeFrames(status: .failed) }
+        let output = AVAssetReaderVideoCompositionOutput(
+            videoTracks: tracks,
+            videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        )
+        output.videoComposition = built.videoComposition
+        reader.add(output)
+        let progress = ReadProgress()
+        progress.watch(reader, stall: 20, limit: 50)
+        reader.startReading()
+        var frames = CrossfadeFrames(status: .reading)
+        while let sample = output.copyNextSampleBuffer() {
+            let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+            progress.read(time)
+            let inTransition = time > 2.5 && time < 3.5
+            let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
+            guard inTransition || isAlone, let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+            let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
+            if inTransition { frames.blended.append((time, brightness)) } else { frames.alone.append(brightness) }
+        }
+        progress.finish()
+        frames.status = reader.status
+        frames.stalled = progress.stoppedByWatchdog
+        frames.report = progress.report
+        return frames
     }
 
     @Test func slowedVideoKeepsItsSoundInStepWithThePicture() async throws {
@@ -304,24 +325,45 @@ struct MusicCatalogTests {
 }
 
 /// How far reading a film got, for a test to report when reading stalls; a watchdog cancels the
-/// reader after a while so a stalled read ends instead of hanging the test process.
+/// reader once no frame has come for a while, so a stalled read ends instead of hanging the test.
 private final class ReadProgress: @unchecked Sendable {
     private let lock = NSLock()
+    private let clock = ContinuousClock()
+    private let started: ContinuousClock.Instant
     private var frames = 0
     private var lastTime: Double?
+    private var lastFrameAt: ContinuousClock.Instant
+    private var firstFrameAfter: Double?
     private var done = false
     private var stopped = false
-    private var status = "not started"
+    private var status = ""
 
-    func watch(_ reader: AVAssetReader, for seconds: Double) {
-        DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
-            let stop = lock.withLock {
-                guard !done else { return false }
+    init() {
+        started = clock.now
+        lastFrameAt = started
+    }
+
+    private enum Next { case stop, wait, end }
+
+    /// Cancels the reader once no frame has come for `stall` seconds, or after `limit` seconds.
+    func watch(_ reader: AVAssetReader, stall: Double, limit: Double) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { [self] in
+            let next: Next = lock.withLock {
+                guard !done else { return .end }
+                let now = clock.now
+                let quiet: Double = (now - lastFrameAt) / .seconds(1)
+                let total: Double = (now - started) / .seconds(1)
+                guard quiet >= stall || total >= limit else { return .wait }
                 stopped = true
-                status = "reader status \(reader.status.rawValue), error \(String(describing: reader.error))"
-                return true
+                status = "stopped after \(Self.format(total)) s, \(Self.format(quiet)) s without a frame: "
+                    + "reader status \(reader.status.rawValue), error \(String(describing: reader.error))"
+                return .stop
             }
-            if stop { reader.cancelReading() }
+            switch next {
+            case .stop: reader.cancelReading()
+            case .wait: watch(reader, stall: stall, limit: limit)
+            case .end: break
+            }
         }
     }
 
@@ -329,18 +371,26 @@ private final class ReadProgress: @unchecked Sendable {
         lock.withLock {
             frames += 1
             lastTime = time
+            lastFrameAt = clock.now
+            if firstFrameAfter == nil { firstFrameAfter = (lastFrameAt - started) / .seconds(1) }
         }
     }
 
     func finish() {
-        lock.withLock { done = true }
+        lock.withLock {
+            if !done && !stopped { status = "done after \(Self.format((clock.now - started) / .seconds(1))) s" }
+            done = true
+        }
     }
 
     var stoppedByWatchdog: Bool { lock.withLock { stopped } }
 
     var report: String {
         lock.withLock {
-            "\(frames) frames read, the last at \(lastTime.map { "\($0) s" } ?? "-")" + (stopped ? ", stopped: \(status)" : "")
+            "\(frames) frames read, the first after \(firstFrameAfter.map { "\(Self.format($0)) s" } ?? "-"), "
+                + "the last at \(lastTime.map { "\($0) s" } ?? "-") in the film, \(status)"
         }
     }
+
+    private static func format(_ seconds: Double) -> String { String(format: "%.1f", seconds) }
 }
