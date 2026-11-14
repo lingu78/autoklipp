@@ -197,6 +197,50 @@ def make_available(api, app_id):
     print(f"  {len(territories)} territories")
 
 
+def submit_for_review(api, app_id, version_id):
+    """Submits the version for review, once Apple has processed every screenshot of it (new
+    ones take a minute or two): a review submission with the version as its item."""
+    for _ in range(40):
+        waiting = []
+        for localization in api.get(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations", limit="50")["data"]:
+            for shot_set in api.get(f"/v1/appStoreVersionLocalizations/{localization['id']}/appScreenshotSets", limit="50")["data"]:
+                for shot in api.get(f"/v1/appScreenshotSets/{shot_set['id']}/appScreenshots", limit="50")["data"]:
+                    state = delivery_state(shot)
+                    if state == "FAILED":
+                        raise RuntimeError(f"screenshot {shot['attributes'].get('fileName')} was refused")
+                    if state != "COMPLETE":
+                        waiting.append(shot["attributes"].get("fileName"))
+        if not waiting:
+            break
+        print(f"  waiting for {len(waiting)} screenshots to be processed")
+        time.sleep(15)
+    else:
+        raise RuntimeError("screenshots still being processed; run again with submit")
+
+    open_submissions = api.get("/v1/reviewSubmissions", **{
+        "filter[app]": app_id, "filter[platform]": "IOS", "filter[state]": "READY_FOR_REVIEW"})["data"]
+    if open_submissions:
+        submission = open_submissions[0]
+    else:
+        submission = api.request("POST", "/v1/reviewSubmissions", {"data": {
+            "type": "reviewSubmissions", "attributes": {"platform": "IOS"},
+            "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})["data"]
+    try:
+        api.request("POST", "/v1/reviewSubmissionItems", {"data": {
+            "type": "reviewSubmissionItems",
+            "relationships": {
+                "reviewSubmission": {"data": {"type": "reviewSubmissions", "id": submission["id"]}},
+                "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}},
+            }}})
+    except ApiError as error:
+        # Already an item of this submission from an earlier run.
+        if error.status != 409:
+            raise
+        print(f"  item already there: {str(error)[:200]}")
+    api.request("PATCH", f"/v1/reviewSubmissions/{submission['id']}", {"data": {
+        "type": "reviewSubmissions", "id": submission["id"], "attributes": {"submitted": True}}})
+
+
 def delivery_state(asset):
     return (asset["attributes"].get("assetDeliveryState") or {}).get("state")
 
@@ -263,6 +307,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--report", action="store_true", help="only report what App Store Connect has")
     parser.add_argument("--probe", action="store_true", help="ask the API which screenshot types it takes")
+    parser.add_argument("--new-version", help="create this version in App Store Connect first, unless it exists")
+    parser.add_argument("--submit", action="store_true", help="submit the version for review once it is filled in")
     args = parser.parse_args()
     api = Client(args.key, args.key_id, args.issuer_id, args.dry_run)
     done, failed = [], []
@@ -283,6 +329,17 @@ def main():
     print(f"App {apps[0]['attributes'].get('name')} ({app_id})")
 
     versions = api.get(f"/v1/apps/{app_id}/appStoreVersions", **{"filter[platform]": "IOS", "limit": "20"})["data"]
+    if args.new_version and not args.dry_run:
+        if not any(v["attributes"].get("versionString") == args.new_version for v in versions):
+            # App Store Connect copies the texts and screenshots of the version before it.
+            api.request("POST", "/v1/appStoreVersions", {"data": {
+                "type": "appStoreVersions",
+                "attributes": {"platform": "IOS", "versionString": args.new_version, "releaseType": "AFTER_APPROVAL"},
+                "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
+            print(f"Created version {args.new_version}")
+            versions = api.get(f"/v1/apps/{app_id}/appStoreVersions", **{"filter[platform]": "IOS", "limit": "20"})["data"]
+        args.version = args.new_version
+
     def state_of(item):
         return item["attributes"].get("appVersionState") or item["attributes"].get("appStoreState")
 
@@ -472,6 +529,12 @@ def main():
             "data": {"type": "builds", "id": build["id"]}})
         print(f"  build {build['attributes'].get('version')}")
     step("build", attach_build)
+
+    if args.submit and not args.dry_run:
+        if failed:
+            print("Not submitted for review: a step above failed.")
+        else:
+            step("submitted for review", lambda: submit_for_review(api, app_id, version_id))
 
     if not args.dry_run:
         try:

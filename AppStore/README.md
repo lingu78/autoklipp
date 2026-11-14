@@ -62,12 +62,13 @@ Versionen i App Store Connect är 1.0, så bygget måste också ha version 1.0. 
 Version 1.0 lämnas orörd medan den granskas eller ligger ute: arbetsflödet ändrar bara en version
 som förbereds (*Prepare for Submission*) och rapporterar annars bara. För en uppdatering:
 
-1. App Store Connect → **+** vid iOS App → nytt versionsnummer, t.ex. 1.0.1.
-2. Samma nummer som `MARKETING_VERSION` i projektet, och arbetsflödet **TestFlight**.
-3. *What's New* per språk i `sv/whats_new.txt` och `en-US/whats_new.txt` (krävs för uppdateringar).
-4. Arbetsflödet **App Store page** (körs vid push hit, eller för hand) fyller i den nya versionen:
-   texter, skärmbilder och det senaste färdiga bygget av den.
-5. **Add for Review** i App Store Connect.
+1. Samma nummer som `MARKETING_VERSION` i projektet, och arbetsflödet **TestFlight**.
+2. *What's New* per språk i `sv/whats_new.txt` och `en-US/whats_new.txt` (krävs för uppdateringar).
+3. Arbetsflödet **App Store page** för hand med *new_version* (t.ex. 1.0.1) och *submit*: det
+   skapar versionen i App Store Connect (texter och skärmbilder kopieras från versionen före),
+   fyller i texter, skärmbilder och det senaste färdiga bygget av versionen, väntar tills Apple
+   behandlat skärmbilderna och skickar in den för granskning. Utan *submit* fylls den bara i.
+4. Sidhuvud- och sökresultatbilden byts för hand innan inskickning, om de ska ändras.
 
 ## App Information
 

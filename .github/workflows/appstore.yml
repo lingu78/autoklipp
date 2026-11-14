@@ -19,6 +19,14 @@ on:
         description: "Only ask the API which screenshot types it takes (iPhone Duo)"
         type: boolean
         default: false
+      new_version:
+        description: "Create this version first (e.g. 1.0.1), copied from the one before, and fill it in"
+        type: string
+        default: ""
+      submit:
+        description: "Submit the version for review once it is filled in"
+        type: boolean
+        default: false
 
 concurrency:
   group: appstore-page
@@ -49,7 +57,9 @@ jobs:
         env:
           REPORT: ${{ inputs.report_only && '--report' || '' }}
           PROBE: ${{ inputs.probe && '--probe' || '' }}
-        run: python3 scripts/app_store_connect.py --key "$RUNNER_TEMP/keys/AuthKey.p8" $REPORT $PROBE
+          NEW_VERSION: ${{ inputs.new_version && format('--new-version={0}', inputs.new_version) || '' }}
+          SUBMIT: ${{ inputs.submit && '--submit' || '' }}
+        run: python3 scripts/app_store_connect.py --key "$RUNNER_TEMP/keys/AuthKey.p8" $REPORT $PROBE $NEW_VERSION $SUBMIT
       - name: Remove the key
         if: always()
         run: rm -rf "$RUNNER_TEMP/keys"
