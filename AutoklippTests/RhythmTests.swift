@@ -22,7 +22,7 @@ struct RhythmTests {
         return segment.trackStart + (time - segment.filmStart)
     }
 
-    @Test(arguments: ["sommarvind", "full-fart", "morgondimma"])
+    @Test(arguments: ["sommarvind", "full-fart", "morgondimma", "neonnatt"])
     func bundledSongsDecodeOnTheirBeatGrid(id: String) async throws {
         let track = try #require(MusicCatalog.track(id: id))
         let url = try #require(track.url)

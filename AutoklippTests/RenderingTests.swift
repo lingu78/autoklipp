@@ -281,6 +281,26 @@ struct MusicCatalogTests {
         let layout = MusicLayout.make(track: track.info, filmDuration: 600)
         #expect(abs(layout.segments.reduce(0) { $0 + $1.duration } - 600) < 1e-6)
     }
+
+    /// Every song in tracks.json is in the app, as long as listed, with a whole beat grid, a loop
+    /// inside the song, at least one style and the CC0 licence.
+    @Test func everyBundledSongIsThereWithItsBeatGrid() async throws {
+        let tracks = MusicCatalog.tracks
+        #expect(tracks.count >= 24, "\(tracks.count) songs")
+        #expect(Set(tracks.map(\.id)).count == tracks.count, "no song twice")
+        for style in StyleID.allCases {
+            #expect(tracks.filter { $0.suits(style) }.count >= 4, "songs for \(style)")
+        }
+        for track in tracks {
+            let url = try #require(track.url, "\(track.id) is missing")
+            let duration = try await AVURLAsset(url: url).load(.duration).seconds
+            #expect(abs(duration - track.duration) < 0.2, "\(track.id): \(duration) s, listed \(track.duration) s")
+            #expect(track.info.beats.count == track.beatCount, "\(track.id)")
+            #expect(track.loopStart < track.loopEnd && track.loopEnd <= track.duration, "\(track.id)")
+            #expect(!track.styles.isEmpty, "\(track.id)")
+            #expect(track.license == "CC0-1.0", "\(track.id)")
+        }
+    }
 }
 
 /// How far reading a film got, for a test to report when reading stalls; a watchdog cancels the

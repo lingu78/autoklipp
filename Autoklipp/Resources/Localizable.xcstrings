@@ -591,6 +591,16 @@
         }
       }
     },
+    "Fewer songs": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Färre låtar"
+          }
+        }
+      }
+    },
     "Film": {
       "localizations": {
         "sv": {
@@ -767,6 +777,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Media"
+          }
+        }
+      }
+    },
+    "More songs (%lld)": {
+      "localizations": {
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fler låtar (%lld)"
           }
         }
       }

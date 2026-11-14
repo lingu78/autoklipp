@@ -72,6 +72,31 @@ TRACKS = [
          verse=[0, 5, 2, 6], chorus=[5, 2, 6, 4], template="cinematic", styles=["cinematic"]),
     dict(id="ljuset-faller", title="Ljuset faller", bpm=90, root=60, scale="minor",
          verse=[0, 3, 5, 4], chorus=[5, 6, 2, 4], template="cinematic_pulse", styles=["cinematic", "nostalgic"]),
+    # Version 1.1: more kinds of music, two or three more songs for every style.
+    dict(id="vinterljus", title="Vinterljus", bpm=66, root=62, scale="major",
+         verse=[0, 4, 5, 3], chorus=[3, 0, 4, 4], template="piano_ballad", styles=["calm", "nostalgic"]),
+    dict(id="molnfri", title="Molnfri", bpm=80, root=57, scale="major",
+         verse=[0, 3, 0, 4], chorus=[3, 4, 5, 3], template="ambient", styles=["calm", "cinematic"]),
+    dict(id="neonnatt", title="Neonnatt", bpm=118, root=57, scale="minor",
+         verse=[0, 5, 3, 6], chorus=[5, 6, 0, 4], template="synthwave", styles=["energetic", "cinematic"]),
+    dict(id="studsmatta", title="Studsmatta", bpm=140, root=60, scale="minor",
+         verse=[0, 5, 0, 6], chorus=[5, 6, 3, 4], template="trap", styles=["energetic"]),
+    dict(id="discoboll", title="Discoboll", bpm=120, root=62, scale="major",
+         verse=[1, 4, 0, 5], chorus=[3, 4, 2, 5], template="disco", styles=["energetic", "nostalgic"]),
+    dict(id="kassettband", title="Kassettband", bpm=88, root=60, scale="minor",
+         verse=[0, 3, 6, 5], chorus=[5, 3, 0, 4], template="boombap", styles=["nostalgic"]),
+    dict(id="brev-hem", title="Brev hem", bpm=96, root=55, scale="major",
+         verse=[0, 5, 3, 4], chorus=[3, 4, 0, 0], template="acoustic", styles=["nostalgic", "travel"]),
+    dict(id="palmblad", title="Palmblad", bpm=108, root=64, scale="major",
+         verse=[0, 4, 5, 3], chorus=[3, 4, 1, 4], template="tropical", styles=["travel", "energetic"]),
+    dict(id="landsvag", title="Landsväg", bpm=100, root=57, scale="major",
+         verse=[0, 3, 4, 3], chorus=[5, 3, 0, 4], template="acoustic_drive", styles=["travel"]),
+    dict(id="kustlinje", title="Kustlinje", bpm=116, root=59, scale="major",
+         verse=[0, 5, 3, 4], chorus=[3, 4, 5, 4], template="marimba_pop", styles=["travel", "calm"]),
+    dict(id="stjarnhimmel", title="Stjärnhimmel", bpm=70, root=52, scale="minor",
+         verse=[0, 5, 3, 4], chorus=[5, 3, 6, 4], template="orchestral", styles=["cinematic"]),
+    dict(id="eko", title="Eko", bpm=78, root=57, scale="minor",
+         verse=[0, 2, 5, 4], chorus=[5, 6, 0, 4], template="piano_strings", styles=["cinematic", "calm"]),
 ]
 
 # Which parts play, by template; drum pattern names refer to DRUM_PATTERNS.
@@ -88,6 +113,19 @@ TEMPLATES = {
     "travel_pad": dict(drums="halftime", bass="half", keys=None, arp="bell8", pad=True, lead="flute"),
     "cinematic": dict(drums="toms", bass="whole", keys=None, arp="pluck8", pad=True, lead="bell", strings=True),
     "cinematic_pulse": dict(drums="toms", bass="pulse", keys=None, arp="bell16", pad=True, lead="flute", strings=True),
+    # Version 1.1
+    "piano_ballad": dict(drums="none", bass="whole", keys="piano", arp=None, pad=True, lead="piano", strings=True, soft_pad=True),
+    "ambient": dict(drums="none", bass="whole", keys=None, arp="bell8", pad=True, lead="bell", choir=True, soft_pad=True),
+    "synthwave": dict(drums="disco", bass="pulse", keys=None, arp="saw16", pad=True, lead="square", toms=True),
+    "trap": dict(drums="trap", bass="808", keys=None, arp="bell8", pad=True, lead="bell"),
+    "disco": dict(drums="disco", bass="octave", keys="epiano_stab", arp=None, pad=True, lead="square", strings=True),
+    "boombap": dict(drums="boombap", bass="half", keys="epiano", arp=None, pad=False, lead="piano", swing=True),
+    "acoustic": dict(drums="brush", bass="half", keys="strum", arp=None, pad=False, lead="whistle"),
+    "acoustic_drive": dict(drums="pop_soft", bass="eighths", keys="strum", arp=None, pad=True, lead="whistle"),
+    "tropical": dict(drums="pop", bass="eighths", keys=None, arp="marimba16", pad=True, lead="whistle"),
+    "marimba_pop": dict(drums="halftime", bass="half", keys="strum", arp="marimba8", pad=True, lead="marimba"),
+    "orchestral": dict(drums="toms", bass="whole", keys="piano", arp=None, pad=False, lead="flute", strings=True, choir=True),
+    "piano_strings": dict(drums="soft", bass="half", keys=None, arp="piano8", pad=True, lead="piano", strings=True),
 }
 
 # 16-step patterns per bar: letters are hits. k=kick s=snare c=clap h=hat o=open hat r=rim
@@ -100,6 +138,11 @@ DRUM_PATTERNS = {
     "lofi": {"k": "x......x..x.....", "s": "....x.......x...", "h": "x.x.x.x.x.x.x.x."},
     "halftime": {"k": "x.........x.....", "s": "........x.......", "h": "x.x.x.x.x.x.x.x.", "x": "..x...x...x...x."},
     "toms": {"k": "x.......x.......", "t": "x.....x...x.....", "T": "............x.x."},
+    "none": {},
+    "disco": {"k": "x...x...x...x...", "s": "....x.......x...", "h": "x.x.x.x.x.x.x.x.", "o": "..x...x...x...x."},
+    "trap": {"k": "x......x..x.....", "c": "........x.......", "h": "x.xxx.x.x.xxx.xx"},
+    "boombap": {"k": "x.......x.x.....", "s": "....x.......x...", "h": "x.x.x.x.x.x.x.x."},
+    "brush": {"k": "x.......x.......", "r": "....x.......x...", "x": "xxxxxxxxxxxxxxxx"},
 }
 
 
@@ -291,6 +334,78 @@ def bass_note(freq: float, dur: float, kind: str) -> np.ndarray:
     return fade(np.tanh(1.4 * tone), 0.006, 0.05)
 
 
+def piano(freq: float, dur: float) -> np.ndarray:
+    """Struck string: slightly stretched partials that fade faster the higher they are."""
+    n = int(dur * SR)
+    t = seconds(n)
+    out = np.zeros(n)
+    for k in range(1, 10):
+        partial = freq * k * math.sqrt(1 + 0.0004 * k * k)
+        if partial > SR / 2 - 500:
+            break
+        out += np.sin(2 * np.pi * partial * t) * np.exp(-t * (0.6 + 0.45 * k) * (1 + freq / 900)) / k ** 1.2
+    hammer = fft_filter(np.random.default_rng(int(freq * 10)).uniform(-1, 1, n), low=1200, high=5000) * np.exp(-t / 0.006)
+    return fade(0.6 * out + 0.12 * hammer, 0.002, 0.15)
+
+
+def marimba(freq: float, dur: float) -> np.ndarray:
+    n = int(dur * SR)
+    t = seconds(n)
+    tone = np.sin(2 * np.pi * freq * t) * np.exp(-t / 0.4)
+    tone += 0.35 * np.sin(2 * np.pi * freq * 4 * t) * np.exp(-t / 0.07)
+    tone += 0.12 * np.sin(2 * np.pi * freq * 9.9 * t) * np.exp(-t / 0.02)
+    return fade(tone, 0.001, 0.06)
+
+
+def whistle(freq: float, dur: float) -> np.ndarray:
+    n = int(dur * SR)
+    t = seconds(n)
+    vibrato = 1 + 0.006 * np.sin(2 * np.pi * 5.5 * t) * np.minimum(1, t / 0.2)
+    phase = 2 * np.pi * freq * np.cumsum(vibrato) / SR
+    tone = np.sin(phase) + 0.05 * np.sin(2 * phase)
+    breath = fft_filter(np.random.default_rng(int(freq) + 7).uniform(-1, 1, n), low=freq * 0.8, high=freq * 1.4)
+    return fade(tone + 0.04 * breath / max(np.max(np.abs(breath)), 1e-9), 0.03, 0.08)
+
+
+def bass_808(freq: float, dur: float) -> np.ndarray:
+    n = int(dur * SR)
+    t = seconds(n)
+    f = freq * (1 + 0.6 * np.exp(-t / 0.03))
+    tone = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t / 1.1)
+    return fade(np.tanh(2.0 * tone), 0.002, 0.08)
+
+
+def choir_chord(freqs: list[float], dur: float) -> np.ndarray:
+    """An "aah" choir: three slightly detuned voices per note, shaped by the vowel's formants."""
+    n = int(dur * SR)
+    t = seconds(n)
+    out = np.zeros(n)
+    formants = ((750, 120, 1.0), (1150, 140, 0.55), (2600, 220, 0.25))
+    for i, f in enumerate(freqs):
+        for voice in (-1, 0, 1):
+            vibrato = 1 + 0.0035 * np.sin(2 * np.pi * (4.6 + 0.4 * voice + 0.2 * i) * t + voice)
+            phase = 2 * np.pi * f * (1 + voice * 0.003) * np.cumsum(vibrato) / SR
+            for k in range(1, int(4000 // f) + 1):
+                amp = sum(level * math.exp(-((k * f - centre) / width) ** 2) for centre, width, level in formants)
+                if amp > 0.01:
+                    out += amp * np.sin(k * phase) / 3
+    return fade(out / max(1, len(freqs)), 0.7, 0.9)
+
+
+def strum(chord: list[int], dur: float, rng: np.random.Generator, down: bool = True) -> np.ndarray:
+    """A guitar strum: the chord's notes over two octaves, plucked one after another."""
+    notes = [chord[0] - 12, chord[2] - 12, chord[0], chord[1], chord[2], chord[0] + 12]
+    if not down:
+        notes = notes[::-1][:4]
+    gap = 0.012 if down else 0.009
+    out = np.zeros(int((dur + gap * len(notes)) * SR))
+    for i, note in enumerate(notes):
+        voice = pluck(hz(note), dur, rng, brightness=0.35)
+        start = int(i * gap * SR)
+        out[start:start + len(voice)] += voice
+    return out / len(notes) * (1.0 if down else 0.7)
+
+
 # ---------------------------------------------------------------- composition
 
 class Mixer:
@@ -403,7 +518,7 @@ def render_track(spec: dict) -> tuple[np.ndarray, dict]:
                     if symbol == ".":
                         continue
                     swing = 0.0
-                    if template.get("lofi") and step % 2 == 1:
+                    if (template.get("lofi") or template.get("swing")) and step % 2 == 1:
                         swing = beat * 0.08
                     time = t0 + step * beat / 4 + swing
                     gain = {"k": 0.95, "s": 0.55, "c": 0.5, "h": 0.18, "o": 0.16, "x": 0.12, "r": 0.35, "t": 0.6, "T": 0.45}[voice]
@@ -413,6 +528,10 @@ def render_track(spec: dict) -> tuple[np.ndarray, dict]:
                     if last_bar_of_song and step > 0:
                         continue
                     mixer.add(kit.samples[voice], time, gain * (0.7 + 0.3 * energy), pan, send=0.12 if voice in ("s", "c", "r", "t", "T") else 0.02)
+            # Tom fill into the next section.
+            if template.get("toms") and local_bar == bars - 1 and name not in ("outro",):
+                for i, step in enumerate((12, 13, 14, 15)):
+                    mixer.add(kit.samples["T" if i < 2 else "t"], t0 + step * beat / 4, 0.4, 0.2 - 0.15 * i, send=0.15)
             # Chorus crash-like open hat at the first bar.
             if name == "chorus" and local_bar == 0:
                 mixer.add(kit.samples["o"], t0, 0.35, 0.2, 0.2)
@@ -435,15 +554,26 @@ def render_track(spec: dict) -> tuple[np.ndarray, dict]:
                 elif style == "pulse":
                     for s16 in range(16):
                         mixer.add(bass_note(bass_root, beat * 0.2, "saw"), t0 + s16 * beat / 4, 0.3 + 0.1 * (s16 % 4 == 0))
+                elif style == "808":
+                    for position, beats_long in ((0, 1.75), (1.75, 1.0), (2.5, 1.5)):
+                        mixer.add(bass_808(bass_root, beat * beats_long), t0 + position * beat, 0.55)
+                elif style == "octave":
+                    for e in range(8):
+                        mixer.add(bass_note(bass_root * (2 if e % 2 else 1), beat * 0.42, "sine"), t0 + e * beat / 2, 0.5)
 
             # Pads and strings
             if template.get("pad"):
                 freqs = [hz(n) for n in chord]
                 gain = 0.22 if name in ("chorus", "bridge") else 0.16
+                if template.get("soft_pad"):
+                    gain *= 0.7
                 mixer.add(pad_chord(freqs, bar_len + 0.4), t0, gain, 0.0, send=0.5)
             if template.get("strings") and name in ("chorus", "bridge", "outro"):
                 freqs = [hz(n + 12) for n in chord]
                 mixer.add(strings_chord(freqs, bar_len + 0.6), t0, 0.12, 0.0, send=0.6)
+            if template.get("choir") and name in ("chorus", "bridge", "outro"):
+                freqs = [hz(n) for n in chord]
+                mixer.add(choir_chord(freqs, bar_len + 0.8), t0, 0.16, 0.0, send=0.6)
 
             # Keys
             keys = template.get("keys")
@@ -451,6 +581,16 @@ def render_track(spec: dict) -> tuple[np.ndarray, dict]:
                 for half in range(2):
                     for i, note in enumerate(chord):
                         mixer.add(epiano(hz(note), beat * 2.2), t0 + half * 2 * beat + i * 0.012, 0.16, -0.2 + 0.2 * i, send=0.3)
+            elif keys == "piano":
+                # Left hand on the root, right hand on the chord, twice a bar.
+                mixer.add(piano(hz(chord[0] - 12), bar_len + 0.5), t0, 0.22, -0.1, send=0.3)
+                for half in range(2):
+                    for i, note in enumerate(chord):
+                        mixer.add(piano(hz(note + 12), beat * 2.4), t0 + half * 2 * beat + i * 0.015, 0.14, -0.15 + 0.15 * i, send=0.3)
+            elif keys == "strum" and name != "intro":
+                # Down, down-up, up-down-up on eighths.
+                for step, down in ((0, True), (2, True), (3, False), (5, False), (6, True), (7, False)):
+                    mixer.add(strum(chord, beat * 1.2, rng, down), t0 + step * beat / 2, 0.5 if down else 0.35, -0.25, send=0.2)
             elif keys in ("stab", "epiano_stab") and name not in ("intro", "outro"):
                 for q in (0.5, 1.5, 2.5, 3.5) if keys == "stab" else (0.5, 1.75, 2.5):
                     for i, note in enumerate(chord):
@@ -476,6 +616,12 @@ def render_track(spec: dict) -> tuple[np.ndarray, dict]:
                     elif arp.startswith("bell"):
                         voice = bell(hz(note + 12), dur + 0.6)
                         gain = 0.1
+                    elif arp.startswith("marimba"):
+                        voice = marimba(hz(note), dur + 0.5)
+                        gain = 0.22
+                    elif arp.startswith("piano"):
+                        voice = piano(hz(note), dur + 0.8)
+                        gain = 0.16
                     else:
                         voice = fade(fft_filter(saw(hz(note), dur, voices=2), high=2500), 0.003, 0.03)
                         gain = 0.07
@@ -496,6 +642,12 @@ def render_track(spec: dict) -> tuple[np.ndarray, dict]:
                 voice, gain = fade(fft_filter(square(hz(note + 12), d * 0.9), high=3500), 0.01, 0.05), 0.07
             elif lead == "saw":
                 voice, gain = fade(fft_filter(saw(hz(note + 12), d * 0.9), high=4000), 0.01, 0.05), 0.07
+            elif lead == "piano":
+                voice, gain = piano(hz(note + 12), d + 1.0), 0.24
+            elif lead == "whistle":
+                voice, gain = whistle(hz(note + 12), d * 0.92), 0.14
+            elif lead == "marimba":
+                voice, gain = marimba(hz(note + 12), d + 0.5), 0.26
             else:
                 voice, gain = epiano(hz(note + 12), d + 0.5), 0.2
             mixer.add(voice, time, gain, 0.1, send=0.35)
@@ -520,6 +672,12 @@ def render_track(spec: dict) -> tuple[np.ndarray, dict]:
     mix *= 10 ** (-16 / 20) / max(rms, 1e-9)
     mix = np.tanh(mix * 1.2) / np.tanh(1.2)
     mix *= 10 ** (-1 / 20) / max(np.max(np.abs(mix)), 1e-9)
+    # No louder than the loudest of the first songs (about -11 dB RMS), so that switching songs
+    # in a film keeps the level; sparse arrangements otherwise come out louder after the peak step.
+    rms = np.sqrt(np.mean(mix ** 2))
+    ceiling = 10 ** (-11.5 / 20)
+    if rms > ceiling:
+        mix *= ceiling / rms
 
     beats = [round(i * beat, 6) for i in range(int(round(length / beat)))]
     loop_start = sections[1]["start"]

@@ -188,6 +188,15 @@ Format: **Beslut** – motivering – (datum, fas).
 - **AAC 128 kbit/s via ffmpeg** (finns i utvecklingsmiljön; inga ljudfiler genereras vid bygget).
   Avkodning med ffmpeg visar ingen förskjutning mot originalet; att AVFoundation avkodar utan
   förskjutning verifieras med beat detection i fas 3. (2026-10-20, fas 1)
+- **Fler sorters musik (version 1.1): 24 låtar i stället för 12, minst fyra per stil.** Generatorn
+  fick nya instrument (piano med sträckta deltoner, marimba, visselpipa, 808-bas, kör som sjunger
+  "aah" genom vokalens formanter, gitarrslag där varje sträng är en plockad sträng), nya trummönster
+  (disco, trap, boom bap med swing, vispar, inga trummor) och nya arrangemang: pianoballad, ambient,
+  synthwave, trap, disco, boom bap, akustisk gitarr, tropiskt med marimba och orkester. Allt är
+  fortfarande syntetiserat från grunden och CC0. Låtar som blir starkare än −11,5 dB RMS sänks till
+  det, så att glesa arrangemang (ett piano) inte låter starkare än de första låtarna när man byter.
+  Musiklistan visar låtarna för stilen och lägger resten bakom *Fler låtar*, så att listan inte blir
+  lång; en vald låt ur resten visas alltid. Appen blir ungefär 30 MB större. (2026-11-14)
 
 ## 6b. Rytm, stilar och ljudmix (fas 3)
 

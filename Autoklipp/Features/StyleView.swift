@@ -214,24 +214,42 @@ struct SoundSection: View {
     }
 }
 
-/// Built-in songs (those made for the style first), previews and the user's own file.
+/// Built-in songs (those made for the style, then the rest behind More songs), previews and the
+/// user's own file.
 struct MusicPickerSection: View {
     let draft: ProjectDraft
     @State private var previewPlayer: AVAudioPlayer?
     @State private var playingSongID: String?
     @State private var importingSong = false
+    @State private var showsOtherSongs = false
 
     var body: some View {
         Section {
             if let custom = draft.customSong {
                 songRow(id: custom.id, title: Text(custom.title), detail: Text("\(Int(custom.info.bpm.rounded())) BPM · own file"), url: custom.url, start: 0)
             }
-            ForEach(orderedTracks) { track in
-                songRow(
-                    id: track.id, title: Text(track.title),
-                    detail: track.suits(draft.style) ? Text("\(Int(track.bpm)) BPM · suits the style") : Text("\(Int(track.bpm)) BPM"),
-                    url: track.url, start: track.loopStart
-                )
+            ForEach(suitedTracks) { track in
+                songRow(id: track.id, title: Text(track.title), detail: Text("\(Int(track.bpm)) BPM · suits the style"), url: track.url, start: track.loopStart)
+            }
+            if !otherTracks.isEmpty {
+                // The other songs stay out of the way until asked for, or while one of them is chosen.
+                let otherChosen = otherTracks.contains { $0.id == draft.musicTrackID }
+                if showsOtherSongs || otherChosen {
+                    ForEach(otherTracks) { track in
+                        songRow(id: track.id, title: Text(track.title), detail: Text("\(Int(track.bpm)) BPM"), url: track.url, start: track.loopStart)
+                    }
+                }
+                if !otherChosen {
+                    Button {
+                        withAnimation(.snappy) { showsOtherSongs.toggle() }
+                    } label: {
+                        if showsOtherSongs {
+                            Label("Fewer songs", systemImage: "chevron.up")
+                        } else {
+                            Label("More songs (\(otherTracks.count))", systemImage: "chevron.down")
+                        }
+                    }
+                }
             }
             Button {
                 importingSong = true
@@ -271,10 +289,13 @@ struct MusicPickerSection: View {
         .onDisappear(perform: stopPreview)
     }
 
-    /// Songs made for the current style first.
-    private var orderedTracks: [MusicTrack] {
-        let style = draft.style
-        return MusicCatalog.tracks.filter { $0.suits(style) } + MusicCatalog.tracks.filter { !$0.suits(style) }
+    /// Songs made for the current style.
+    private var suitedTracks: [MusicTrack] {
+        MusicCatalog.tracks.filter { $0.suits(draft.style) }
+    }
+
+    private var otherTracks: [MusicTrack] {
+        MusicCatalog.tracks.filter { !$0.suits(draft.style) }
     }
 
     private func songRow(id: String, title: Text, detail: Text, url: URL?, start: Double) -> some View {

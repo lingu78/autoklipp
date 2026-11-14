@@ -22,6 +22,8 @@ STRINGS = {
         "Apple Intelligence väljer och ordnar klippen på din enhet. Bara korta beskrivningar av klippen används, aldrig bilderna.",
     "Apple Intelligence could not follow your description, so the film was made without it.":
         "Apple Intelligence kunde inte följa din beskrivning, så filmen gjordes utan den.",
+    "More songs (%lld)": "Fler låtar (%lld)",
+    "Fewer songs": "Färre låtar",
     "Calm": "Lugn",
     "Energetic": "Energisk",
     "Nostalgic": "Nostalgisk",
