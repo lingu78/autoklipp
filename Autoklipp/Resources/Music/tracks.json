@@ -688,6 +688,698 @@
         "nostalgic"
       ],
       "license": "CC0-1.0"
+    },
+    {
+      "id": "vinterljus",
+      "title": "Vinterljus",
+      "file": "vinterljus.m4a",
+      "bpm": 66,
+      "duration": 205.636349,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 14.545455,
+      "loopEnd": 189.090909,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 14.545455,
+          "energy": 0.25
+        },
+        {
+          "start": 14.545455,
+          "end": 43.636364,
+          "energy": 0.5
+        },
+        {
+          "start": 43.636364,
+          "end": 72.727273,
+          "energy": 0.85
+        },
+        {
+          "start": 72.727273,
+          "end": 101.818182,
+          "energy": 0.55
+        },
+        {
+          "start": 101.818182,
+          "end": 130.909091,
+          "energy": 0.9
+        },
+        {
+          "start": 130.909091,
+          "end": 160.0,
+          "energy": 0.4
+        },
+        {
+          "start": 160.0,
+          "end": 189.090909,
+          "energy": 0.95
+        },
+        {
+          "start": 189.090909,
+          "end": 203.636364,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "calm",
+        "nostalgic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "molnfri",
+      "title": "Molnfri",
+      "file": "molnfri.m4a",
+      "bpm": 80,
+      "duration": 170.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 12.0,
+      "loopEnd": 156.0,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 12.0,
+          "energy": 0.25
+        },
+        {
+          "start": 12.0,
+          "end": 36.0,
+          "energy": 0.5
+        },
+        {
+          "start": 36.0,
+          "end": 60.0,
+          "energy": 0.85
+        },
+        {
+          "start": 60.0,
+          "end": 84.0,
+          "energy": 0.55
+        },
+        {
+          "start": 84.0,
+          "end": 108.0,
+          "energy": 0.9
+        },
+        {
+          "start": 108.0,
+          "end": 132.0,
+          "energy": 0.4
+        },
+        {
+          "start": 132.0,
+          "end": 156.0,
+          "energy": 0.95
+        },
+        {
+          "start": 156.0,
+          "end": 168.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "calm",
+        "cinematic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "neonnatt",
+      "title": "Neonnatt",
+      "file": "neonnatt.m4a",
+      "bpm": 118,
+      "duration": 115.898299,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 8.135593,
+      "loopEnd": 105.762712,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 8.135593,
+          "energy": 0.25
+        },
+        {
+          "start": 8.135593,
+          "end": 24.40678,
+          "energy": 0.5
+        },
+        {
+          "start": 24.40678,
+          "end": 40.677966,
+          "energy": 0.85
+        },
+        {
+          "start": 40.677966,
+          "end": 56.949153,
+          "energy": 0.55
+        },
+        {
+          "start": 56.949153,
+          "end": 73.220339,
+          "energy": 0.9
+        },
+        {
+          "start": 73.220339,
+          "end": 89.491525,
+          "energy": 0.4
+        },
+        {
+          "start": 89.491525,
+          "end": 105.762712,
+          "energy": 0.95
+        },
+        {
+          "start": 105.762712,
+          "end": 113.898305,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "energetic",
+        "cinematic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "studsmatta",
+      "title": "Studsmatta",
+      "file": "studsmatta.m4a",
+      "bpm": 140,
+      "duration": 98.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 6.857143,
+      "loopEnd": 89.142857,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 6.857143,
+          "energy": 0.25
+        },
+        {
+          "start": 6.857143,
+          "end": 20.571429,
+          "energy": 0.5
+        },
+        {
+          "start": 20.571429,
+          "end": 34.285714,
+          "energy": 0.85
+        },
+        {
+          "start": 34.285714,
+          "end": 48.0,
+          "energy": 0.55
+        },
+        {
+          "start": 48.0,
+          "end": 61.714286,
+          "energy": 0.9
+        },
+        {
+          "start": 61.714286,
+          "end": 75.428571,
+          "energy": 0.4
+        },
+        {
+          "start": 75.428571,
+          "end": 89.142857,
+          "energy": 0.95
+        },
+        {
+          "start": 89.142857,
+          "end": 96.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "energetic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "discoboll",
+      "title": "Discoboll",
+      "file": "discoboll.m4a",
+      "bpm": 120,
+      "duration": 114.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 8.0,
+      "loopEnd": 104.0,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 8.0,
+          "energy": 0.25
+        },
+        {
+          "start": 8.0,
+          "end": 24.0,
+          "energy": 0.5
+        },
+        {
+          "start": 24.0,
+          "end": 40.0,
+          "energy": 0.85
+        },
+        {
+          "start": 40.0,
+          "end": 56.0,
+          "energy": 0.55
+        },
+        {
+          "start": 56.0,
+          "end": 72.0,
+          "energy": 0.9
+        },
+        {
+          "start": 72.0,
+          "end": 88.0,
+          "energy": 0.4
+        },
+        {
+          "start": 88.0,
+          "end": 104.0,
+          "energy": 0.95
+        },
+        {
+          "start": 104.0,
+          "end": 112.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "energetic",
+        "nostalgic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "kassettband",
+      "title": "Kassettband",
+      "file": "kassettband.m4a",
+      "bpm": 88,
+      "duration": 154.727256,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 10.909091,
+      "loopEnd": 141.818182,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 10.909091,
+          "energy": 0.25
+        },
+        {
+          "start": 10.909091,
+          "end": 32.727273,
+          "energy": 0.5
+        },
+        {
+          "start": 32.727273,
+          "end": 54.545455,
+          "energy": 0.85
+        },
+        {
+          "start": 54.545455,
+          "end": 76.363636,
+          "energy": 0.55
+        },
+        {
+          "start": 76.363636,
+          "end": 98.181818,
+          "energy": 0.9
+        },
+        {
+          "start": 98.181818,
+          "end": 120.0,
+          "energy": 0.4
+        },
+        {
+          "start": 120.0,
+          "end": 141.818182,
+          "energy": 0.95
+        },
+        {
+          "start": 141.818182,
+          "end": 152.727273,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "nostalgic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "brev-hem",
+      "title": "Brev hem",
+      "file": "brev-hem.m4a",
+      "bpm": 96,
+      "duration": 142.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 10.0,
+      "loopEnd": 130.0,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 10.0,
+          "energy": 0.25
+        },
+        {
+          "start": 10.0,
+          "end": 30.0,
+          "energy": 0.5
+        },
+        {
+          "start": 30.0,
+          "end": 50.0,
+          "energy": 0.85
+        },
+        {
+          "start": 50.0,
+          "end": 70.0,
+          "energy": 0.55
+        },
+        {
+          "start": 70.0,
+          "end": 90.0,
+          "energy": 0.9
+        },
+        {
+          "start": 90.0,
+          "end": 110.0,
+          "energy": 0.4
+        },
+        {
+          "start": 110.0,
+          "end": 130.0,
+          "energy": 0.95
+        },
+        {
+          "start": 130.0,
+          "end": 140.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "nostalgic",
+        "travel"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "palmblad",
+      "title": "Palmblad",
+      "file": "palmblad.m4a",
+      "bpm": 108,
+      "duration": 126.444444,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 8.888889,
+      "loopEnd": 115.555556,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 8.888889,
+          "energy": 0.25
+        },
+        {
+          "start": 8.888889,
+          "end": 26.666667,
+          "energy": 0.5
+        },
+        {
+          "start": 26.666667,
+          "end": 44.444444,
+          "energy": 0.85
+        },
+        {
+          "start": 44.444444,
+          "end": 62.222222,
+          "energy": 0.55
+        },
+        {
+          "start": 62.222222,
+          "end": 80.0,
+          "energy": 0.9
+        },
+        {
+          "start": 80.0,
+          "end": 97.777778,
+          "energy": 0.4
+        },
+        {
+          "start": 97.777778,
+          "end": 115.555556,
+          "energy": 0.95
+        },
+        {
+          "start": 115.555556,
+          "end": 124.444444,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "travel",
+        "energetic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "landsvag",
+      "title": "Landsväg",
+      "file": "landsvag.m4a",
+      "bpm": 100,
+      "duration": 136.4,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 9.6,
+      "loopEnd": 124.8,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 9.6,
+          "energy": 0.25
+        },
+        {
+          "start": 9.6,
+          "end": 28.8,
+          "energy": 0.5
+        },
+        {
+          "start": 28.8,
+          "end": 48.0,
+          "energy": 0.85
+        },
+        {
+          "start": 48.0,
+          "end": 67.2,
+          "energy": 0.55
+        },
+        {
+          "start": 67.2,
+          "end": 86.4,
+          "energy": 0.9
+        },
+        {
+          "start": 86.4,
+          "end": 105.6,
+          "energy": 0.4
+        },
+        {
+          "start": 105.6,
+          "end": 124.8,
+          "energy": 0.95
+        },
+        {
+          "start": 124.8,
+          "end": 134.4,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "travel"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "kustlinje",
+      "title": "Kustlinje",
+      "file": "kustlinje.m4a",
+      "bpm": 116,
+      "duration": 117.862063,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 8.275862,
+      "loopEnd": 107.586207,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 8.275862,
+          "energy": 0.25
+        },
+        {
+          "start": 8.275862,
+          "end": 24.827586,
+          "energy": 0.5
+        },
+        {
+          "start": 24.827586,
+          "end": 41.37931,
+          "energy": 0.85
+        },
+        {
+          "start": 41.37931,
+          "end": 57.931034,
+          "energy": 0.55
+        },
+        {
+          "start": 57.931034,
+          "end": 74.482759,
+          "energy": 0.9
+        },
+        {
+          "start": 74.482759,
+          "end": 91.034483,
+          "energy": 0.4
+        },
+        {
+          "start": 91.034483,
+          "end": 107.586207,
+          "energy": 0.95
+        },
+        {
+          "start": 107.586207,
+          "end": 115.862069,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "travel",
+        "calm"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "stjarnhimmel",
+      "title": "Stjärnhimmel",
+      "file": "stjarnhimmel.m4a",
+      "bpm": 70,
+      "duration": 194.0,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 13.714286,
+      "loopEnd": 178.285714,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 13.714286,
+          "energy": 0.25
+        },
+        {
+          "start": 13.714286,
+          "end": 41.142857,
+          "energy": 0.5
+        },
+        {
+          "start": 41.142857,
+          "end": 68.571429,
+          "energy": 0.85
+        },
+        {
+          "start": 68.571429,
+          "end": 96.0,
+          "energy": 0.55
+        },
+        {
+          "start": 96.0,
+          "end": 123.428571,
+          "energy": 0.9
+        },
+        {
+          "start": 123.428571,
+          "end": 150.857143,
+          "energy": 0.4
+        },
+        {
+          "start": 150.857143,
+          "end": 178.285714,
+          "energy": 0.95
+        },
+        {
+          "start": 178.285714,
+          "end": 192.0,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "cinematic"
+      ],
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "eko",
+      "title": "Eko",
+      "file": "eko.m4a",
+      "bpm": 78,
+      "duration": 174.307687,
+      "firstBeat": 0.0,
+      "beatCount": 224,
+      "loopStart": 12.307692,
+      "loopEnd": 160.0,
+      "sections": [
+        {
+          "start": 0.0,
+          "end": 12.307692,
+          "energy": 0.25
+        },
+        {
+          "start": 12.307692,
+          "end": 36.923077,
+          "energy": 0.5
+        },
+        {
+          "start": 36.923077,
+          "end": 61.538462,
+          "energy": 0.85
+        },
+        {
+          "start": 61.538462,
+          "end": 86.153846,
+          "energy": 0.55
+        },
+        {
+          "start": 86.153846,
+          "end": 110.769231,
+          "energy": 0.9
+        },
+        {
+          "start": 110.769231,
+          "end": 135.384615,
+          "energy": 0.4
+        },
+        {
+          "start": 135.384615,
+          "end": 160.0,
+          "energy": 0.95
+        },
+        {
+          "start": 160.0,
+          "end": 172.307692,
+          "energy": 0.3
+        }
+      ],
+      "styles": [
+        "cinematic",
+        "calm"
+      ],
+      "license": "CC0-1.0"
     }
   ],
   "generator": "tools/music/generate_music.py"
