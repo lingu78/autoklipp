@@ -165,7 +165,7 @@ struct RenderingTests {
         return try await CompositionBuilder.build(RenderInputs(edl: edl, media: media, musicURL: nil, settings: settings))
     }
 
-    @Test(.timeLimit(.minutes(2)))
+    @Test(.timeLimit(.minutes(3)))
     func crossfadeHoldsTheEdgeFramesOfVideosWithoutSpareFootage() async throws {
         let folder = try TestMedia.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -175,17 +175,12 @@ struct RenderingTests {
         let tracks = try await built.composition.loadTracks(withMediaType: .video)
         let builtAfter = clock.now - started
 
-        // Reading this film has stalled now and then on the iOS 26 simulator, never on the Xcode
-        // 27 jobs: no frame came for good, once after 1.5 s and twice right after 3.17 s, in runs
-        // that took twice as long as usual. Why is not known. A stalled read is reported and the
-        // film read once more from the start; a second stall fails the test.
-        var read = await Self.readCrossfade(built, tracks: tracks)
+        // Reading frames through the compositor is slow on the iOS 26 simulator in CI while the
+        // other suites render alongside: 1.7 to 4 frames a second, where reading the whole 6 s
+        // film took up to 50 s or more. Only the frames checked below are read.
+        let read = await Self.readCrossfade(built, tracks: tracks)
         print("rendering crossfade: built in \(builtAfter), \(read.report)")
-        if read.stalled {
-            read = await Self.readCrossfade(built, tracks: tracks)
-            print("rendering crossfade, read again: \(read.report)")
-        }
-        #expect(!read.stalled, "reading stalled twice: \(read.report)")
+        #expect(!read.stalled, "no frame came for 20 s: \(read.report)")
         let alone = read.alone
         let blended = read.blended
         #expect(read.status == .completed)
@@ -206,11 +201,12 @@ struct RenderingTests {
         var report = ""
     }
 
-    /// The crossfade film's frames where each clip shows alone (1 and 5 s) and those of the
-    /// crossfade (2.5 to 3.5 s). Copying a frame blocks until it is rendered, so this runs on a
-    /// thread of its own rather than on one of those Swift's concurrency shares with the tests
-    /// running alongside. A watchdog cancels the reader when no frame has come for 20 s, or after
-    /// 50 s in all, so a stalled read ends instead of hanging the test process.
+    /// The crossfade film's frames where each clip shows alone (at 1 and 5 s) and those of the
+    /// crossfade (2.5 to 3.5 s), each stretch read on its own. Copying a frame blocks until it is
+    /// rendered, so this runs on a thread of its own rather than on one of those Swift's
+    /// concurrency shares with the tests running alongside. A watchdog cancels a reader when no
+    /// frame has come for 20 s, or once 100 s have gone in all, so a stalled read ends instead of
+    /// hanging the test process.
     static func readCrossfade(_ built: BuiltComposition, tracks: [AVAssetTrack]) async -> CrossfadeFrames {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -220,30 +216,45 @@ struct RenderingTests {
     }
 
     private static func readCrossfadeBlocking(_ built: BuiltComposition, tracks: [AVAssetTrack]) -> CrossfadeFrames {
-        guard let reader = try? AVAssetReader(asset: built.composition) else { return CrossfadeFrames(status: .failed) }
-        let output = AVAssetReaderVideoCompositionOutput(
-            videoTracks: tracks,
-            videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-        )
-        output.videoComposition = built.videoComposition
-        reader.add(output)
-        let progress = ReadProgress()
-        progress.watch(reader, stall: 20, limit: 50)
-        reader.startReading()
-        var frames = CrossfadeFrames(status: .reading)
-        while let sample = output.copyNextSampleBuffer() {
-            let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-            progress.read(time)
-            let inTransition = time > 2.5 && time < 3.5
-            let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
-            guard inTransition || isAlone, let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-            let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
-            if inTransition { frames.blended.append((time, brightness)) } else { frames.alone.append(brightness) }
+        let started = ContinuousClock().now
+        var frames = CrossfadeFrames(status: .completed)
+        var reports: [String] = []
+        for (from, to) in [(0.9, 1.1), (2.45, 3.55), (4.9, 5.1)] {
+            guard let reader = try? AVAssetReader(asset: built.composition) else {
+                frames.status = .failed
+                break
+            }
+            reader.timeRange = CMTimeRange(
+                start: CMTime(seconds: from, preferredTimescale: 600), end: CMTime(seconds: to, preferredTimescale: 600)
+            )
+            let output = AVAssetReaderVideoCompositionOutput(
+                videoTracks: tracks,
+                videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            )
+            output.videoComposition = built.videoComposition
+            reader.add(output)
+            let progress = ReadProgress()
+            let spent: Double = (ContinuousClock().now - started) / .seconds(1)
+            progress.watch(reader, stall: 20, limit: max(1, 100 - spent))
+            reader.startReading()
+            while let sample = output.copyNextSampleBuffer() {
+                let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                progress.read(time)
+                let inTransition = time > 2.5 && time < 3.5
+                let isAlone = abs(time - 1) < 0.01 || abs(time - 5) < 0.01
+                guard inTransition || isAlone, let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+                let brightness = TestMedia.brightness(CIImage(cvPixelBuffer: buffer))
+                if inTransition { frames.blended.append((time, brightness)) } else { frames.alone.append(brightness) }
+            }
+            progress.finish()
+            reports.append("\(from)–\(to) s: \(progress.report)")
+            if reader.status != .completed || progress.stoppedByWatchdog {
+                frames.status = reader.status
+                frames.stalled = progress.stoppedByWatchdog
+                break
+            }
         }
-        progress.finish()
-        frames.status = reader.status
-        frames.stalled = progress.stoppedByWatchdog
-        frames.report = progress.report
+        frames.report = reports.joined(separator: "; ")
         return frames
     }
 
